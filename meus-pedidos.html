@@ -13,27 +13,27 @@
 <main id="app"></main>
 <footer id="ftr"></footer>
 <script type="module">
-import { sb, app, layout, flash, exigir, e, money, dataBR, STATUS } from './assets/app.js';
+import { sb, app, layout, flash, exigir, e, money, dataBR, tempoFmt, STATUS } from './assets/app.js';
 const u = await layout(''); exigir(u);
-async function carregar() {
-  const { data, error } = await sb.from('pedidos').select('*, servicos(nome)').eq('usuario_id', u.id).order('criado_em', { ascending: false });
-  const lista = data || [];
-  app.innerHTML = `<div class="wrap page"><div class="head"><div class="eyebrow">Olá, ${e(u.nome)}</div><h1>Meus pedidos</h1></div><div class="card">
+const { data, error } = await sb.from('pedidos').select('*, servicos(nome), agendamentos(data_agendada,horario,tipo)').eq('cliente_id', u.id).order('criado_em', { ascending: false });
+const lista = data || [];
+const ag = p => Array.isArray(p.agendamentos) ? p.agendamentos[0] : p.agendamentos;
+const quando = p => { const a = ag(p); return a ? `${dataBR(a.data_agendada)} às ${String(a.horario).slice(0, 5)}<br><small>${a.tipo === 'coleta' ? 'Coleta em casa' : 'Na lavanderia'}</small>` : '—'; };
+app.innerHTML = `<div class="wrap page"><div class="head"><div class="eyebrow">Olá, ${e(u.nome)}</div><h1>Meus pedidos</h1></div><div class="card">
   ${error ? '<p class="alert err">Não foi possível carregar seus pedidos.</p>' : ''}
   ${!lista.length ? '<div class="vazio"><p>Você ainda não fez nenhum pedido.</p><a class="btn" href="solicitar.html">Solicitar serviço</a></div>' : `
-  <div class="scroll"><table class="tbl"><tr><th>Nº</th><th>Serviço</th><th>Peças</th><th>Coleta</th><th>Valor estimado</th><th>Status</th><th></th></tr>
-  ${lista.map(p => `<tr><td>#${p.id}</td><td>${e(p.servicos?.nome)}</td><td>${p.quantidade}</td><td>${dataBR(p.data_coleta)}</td><td>${money(p.valor_estimado)}</td>
-    <td><span class="badge s-${p.status}">${STATUS[p.status]}</span></td>
-    <td>${p.status === 'pendente' ? `<button class="btn o mini" data-cancelar="${p.id}">Cancelar</button>` : ''}</td></tr>`).join('')}
-  </table></div><div><a class="btn" href="solicitar.html">Novo pedido</a></div>`}
+  <div class="scroll"><table class="tbl"><thead><tr><th>Nº</th><th>Serviço</th><th>Peças</th><th>Tempo est.</th><th>Agendamento</th><th>Valor est.</th><th>Status</th><th></th></tr></thead><tbody>
+  ${lista.map(p => `<tr><td data-label="Pedido">#${p.id}</td><td data-label="Serviço">${e(p.servicos?.nome)}</td><td data-label="Peças">${p.quantidade}</td>
+    <td data-label="Tempo est.">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p)}</td><td data-label="Valor est.">${money(p.valor_estimado)}</td>
+    <td data-label="Status"><span class="badge s-${p.status}">${STATUS[p.status]}</span></td>
+    <td><div class="acoes">${p.status === 'pendente' ? `<a class="btn mini" href="agendar.html?pedido=${p.id}">Agendar</a>` : ''}${['pendente', 'agendado'].includes(p.status) ? `<button class="btn o mini" data-cancelar="${p.id}">Cancelar</button>` : ''}</div></td></tr>`).join('')}
+  </tbody></table></div><div><a class="btn" href="solicitar.html">Novo pedido</a></div>`}
   </div></div>`;
-}
 app.addEventListener('click', async ev => {
-  const id = ev.target.dataset?.cancelar; if (!id || !confirm('Cancelar este pedido?')) return;
-  const { error } = await sb.from('pedidos').update({ status: 'cancelado' }).eq('id', id).eq('status', 'pendente');
+  const id = ev.target.dataset?.cancelar; if (!id || !confirm('Cancelar este pedido? O horário agendado será liberado.')) return;
+  const { error } = await sb.from('pedidos').update({ status: 'cancelado' }).eq('id', id).in('status', ['pendente', 'agendado']);
   flash(error ? 'Este pedido não pode mais ser cancelado.' : 'Pedido cancelado.', error ? 'err' : 'ok'); location.reload();
 });
-await carregar();
 </script>
 </body>
 </html>

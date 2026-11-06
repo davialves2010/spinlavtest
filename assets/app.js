@@ -7,7 +7,7 @@ export const e = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', 
 export const money = v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 export const dataBR = d => d.split('-').reverse().join('/');
 export const hoje = () => new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
-export const STATUS = { pendente: 'Pendente', em_andamento: 'Em andamento', concluido: 'Concluído', cancelado: 'Cancelado' };
+export const STATUS = { pendente: 'Pendente', agendado: 'Agendado', em_andamento: 'Em andamento', concluido: 'Concluído', cancelado: 'Cancelado' };
 
 const I = {
   wash: '<rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="13" r="4"/><path d="M8 6.5h.01"/>',
@@ -28,7 +28,7 @@ export const flash = (msg, tipo = 'ok') => sessionStorage.setItem('flash', JSON.
 export async function getUser() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return null;
-  const { data: p } = await sb.from('profiles').select('nome,perfil').eq('id', session.user.id).maybeSingle();
+  const { data: p } = await sb.from('clientes').select('nome,perfil').eq('id', session.user.id).maybeSingle();
   return { id: session.user.id, email: session.user.email, nome: p?.nome || session.user.email, perfil: p?.perfil || 'cliente' };
 }
 
@@ -39,8 +39,10 @@ export async function layout(ativo = '') {
   const conta = u
     ? `<a class="btn" href="${u.perfil === 'admin' ? 'admin.html' : 'meus-pedidos.html'}">${u.perfil === 'admin' ? 'Painel' : 'Meus pedidos'}</a><a class="sair" href="#" id="sair">Sair</a>`
     : '<a class="btn" href="login.html">Entrar</a>';
-  document.getElementById('hdr').innerHTML = `<div class="wrap bar"><a class="logo" href="index.html"><img src="assets/img/logo.jpg" alt="">SpinLav</a><nav>${links}${conta}</nav></div>`;
+  document.getElementById('hdr').innerHTML = `<div class="wrap bar"><a class="logo" href="index.html"><img src="assets/img/logo.jpg" alt="">SpinLav</a><button class="menu" id="menu" type="button" aria-label="Abrir menu" aria-expanded="false"><span></span></button><nav id="nv">${links}${conta}</nav></div>`;
   document.getElementById('ftr').innerHTML = `<div class="wrap bar"><div><div class="logo">SpinLav</div><p>Cuidado e praticidade para uma rotina mais leve.</p></div><nav>${links.replace(/ class="on"/g, '')}</nav></div>`;
+  const mb = document.getElementById('menu'), nv = document.getElementById('nv');
+  mb.addEventListener('click', () => { const o = nv.classList.toggle('open'); mb.setAttribute('aria-expanded', o); });
   document.getElementById('sair')?.addEventListener('click', async ev => {
     ev.preventDefault(); await sb.auth.signOut(); flash('Você saiu da sua conta.'); location.href = 'index.html';
   });
@@ -54,3 +56,19 @@ export function exigir(u, admin = false) {
   if (!u) { flash('Entre na sua conta para continuar.', 'err'); location.href = 'login.html'; throw new Error('login'); }
   if (admin && u.perfil !== 'admin') { flash('Acesso restrito à administração.', 'err'); location.href = 'index.html'; throw new Error('admin'); }
 }
+
+// ---- DFD 5.0 Calcular tempo de lavagem / 5.0 Consultar disponibilidade ----
+export const tempoFmt = m => { const h = Math.floor(m / 60), r = m % 60; return h ? `${h}h${r ? ' ' + r + 'min' : ''}` : `${r} min`; };
+export const calcTempo = (s, qtd) => s.tempo_base_min + qtd * s.tempo_peca_min;
+const HORARIOS = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
+export async function horarios(d) {
+  const dow = new Date(d + 'T12:00:00').getDay();
+  if (dow === 0) return { fechado: true, lista: [] };               // domingo fechado
+  const base = dow === 6 ? HORARIOS.filter(h => h <= '12:00') : HORARIOS; // sábado até 12h
+  const { data, error } = await sb.rpc('horarios_lotados', { d });
+  const lotado = new Set((data || []).map(r => String(r.horario).slice(0, 5)));
+  const agora = new Date().toTimeString().slice(0, 5);
+  return { fechado: false, erro: !!error, lista: base.map(h => ({ h, livre: !lotado.has(h) && !(d === hoje() && h <= agora) })) };
+}
+export const slotsHtml = lista => `<div class="slots">${lista.map(s => `<button type="button" class="slot" data-h="${s.h}" ${s.livre ? '' : 'disabled'}>${s.h}<small>${s.livre ? 'Disponível' : 'Indisponível'}</small></button>`).join('')}</div>`;
+export const stepper = n => `<ol class="steps">${['Cadastro', 'Pedido', 'Agendamento', 'Confirmação'].map((t, i) => `<li class="${i + 1 < n ? 'done' : i + 1 === n ? 'on' : ''}"><b>${i + 1 < n ? '✓' : i + 1}</b>${t}</li>`).join('')}</ol>`;

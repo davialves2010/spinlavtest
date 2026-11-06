@@ -13,26 +13,34 @@
 <main id="app"></main>
 <footer id="ftr"></footer>
 <script type="module">
-import { sb, app, layout, flash, exigir, e, money, hoje } from './assets/app.js';
+import { sb, app, layout, flash, exigir, e, money, tempoFmt, calcTempo, stepper } from './assets/app.js';
 const u = await layout('servicos'); exigir(u);
 const { data: servicos } = await sb.from('servicos').select('*').eq('ativo', true).order('id');
 const sel = Number(new URLSearchParams(location.search).get('servico') || 0);
 app.innerHTML = `<div class="wrap page"><div class="head"><div class="eyebrow">Novo pedido</div><h1>Solicitar serviço</h1></div>
-  <form class="card form" id="f">
+  <div class="form">${stepper(2)}
+  <form class="card" id="f">
     <p class="alert err" id="err" hidden></p>
-    <label for="serv">Serviço</label>
+    <label for="serv">Serviço / tipo de lavagem</label>
     <select id="serv" required><option value="">Selecione…</option>${(servicos || []).map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${e(s.nome)} — ${money(s.preco_peca)}/peça</option>`).join('')}</select>
     <label for="qtd">Quantidade de peças</label><input id="qtd" type="number" min="1" max="200" value="1" required>
-    <label for="data">Data da coleta</label><input id="data" type="date" min="${hoje()}" required>
     <label for="obs">Observações (opcional)</label><textarea id="obs" maxlength="500"></textarea>
-    <p class="note">O valor final é confirmado pela lavanderia após a conferência das peças.</p>
-    <button class="btn fit" type="submit" id="b">Enviar pedido</button>
-  </form></div>`;
+    <div class="resumo" id="prev" hidden></div>
+    <p class="note">O valor final é confirmado pela lavanderia após a conferência das peças. No próximo passo você escolhe data e horário.</p>
+    <button class="btn fit" type="submit" id="b">Registrar pedido e agendar</button>
+  </form></div></div>`;
+const calc = () => {
+  const s = (servicos || []).find(x => x.id === Number(serv.value)), q = Number(qtd.value) || 0;
+  if (!s || q < 1) { prev.hidden = true; return; }
+  prev.hidden = false;
+  prev.innerHTML = `<span>Tempo estimado: <strong>${tempoFmt(calcTempo(s, q))}</strong></span><span>Valor estimado: <strong>${money(q * s.preco_peca)}</strong></span>`;
+};
+serv.addEventListener('change', calc); qtd.addEventListener('input', calc); calc();
 f.addEventListener('submit', async ev => {
   ev.preventDefault(); b.disabled = true; err.hidden = true;
-  const { error } = await sb.from('pedidos').insert({ usuario_id: u.id, servico_id: Number(serv.value), quantidade: Number(qtd.value), data_coleta: data.value, observacoes: obs.value.trim() || null });
-  if (error) { err.textContent = 'Não foi possível enviar o pedido: ' + error.message; err.hidden = false; b.disabled = false; return; }
-  flash('Pedido enviado! Você pode acompanhar o andamento abaixo.'); location.href = 'meus-pedidos.html';
+  const { data, error } = await sb.from('pedidos').insert({ cliente_id: u.id, servico_id: Number(serv.value), quantidade: Number(qtd.value), observacoes: obs.value.trim() || null }).select('id').single();
+  if (error) { err.textContent = 'Não foi possível registrar o pedido: ' + error.message; err.hidden = false; b.disabled = false; return; }
+  location.href = 'agendar.html?pedido=' + data.id;
 });
 </script>
 </body>

@@ -1,45 +1,42 @@
-# SpinLav — site estático + Supabase (pronto para GitHub e Vercel)
+# SpinLav — site estático + Supabase (GitHub + Vercel)
 
-Site em HTML/CSS/JavaScript puro (sem build). Banco de dados e login: **Supabase**. Hospedagem: **Vercel**.
+HTML/CSS/JavaScript puro, sem build. Banco e login: **Supabase**. Hospedagem: **Vercel**. Layout responsivo (menu hambúrguer no celular, tabelas viram cartões, cards em 1/2/3 colunas).
 
-## 1) Criar o banco no Supabase
+## Como o site segue o DFD Nível 0
+| DFD | No site | No banco |
+|---|---|---|
+| 1.0 Cadastrar Cliente | `cadastro.html` (+ `login.html`) | D1 `clientes` |
+| 2.0 Registrar Pedido | `solicitar.html` | D2 `pedidos` |
+| 3.0 Registrar Serviço de Lavagem | escolha do serviço/tipo de lavagem em `solicitar.html` | D3 `servicos` |
+| 5.0 Calcular Tempo de Lavagem | tempo estimado (base + peças × tempo/peça) exibido ao solicitar e nos pedidos | colunas `tempo_*` + gatilho |
+| 4.0 Realizar Agendamento | `agendar.html` (tipo, data e horário; confirmação) | D4 `agendamentos` |
+| 5.0 Consultar Disponibilidade | `disponibilidade.html` e a escolha de horário em `agendar.html` | função `horarios_lotados` |
+
+Fluxo do cliente: Cadastro → Pedido (com tempo estimado) → Agendamento → Confirmação em "Meus pedidos".
+
+## 1) Supabase
 1. Crie um projeto em https://supabase.com.
-2. Abra **SQL Editor**, cole todo o conteúdo de `supabase/schema.sql` e clique em **Run**.
-3. Em **Project Settings → API**, copie a **Project URL** e a **anon public key**.
-4. Cole os dois valores em `assets/config.js`.
-5. (Para testar rápido) **Authentication → Providers → Email**: desative "Confirm email". Em produção, deixe ativado.
+2. **SQL Editor** → cole `supabase/schema.sql` → **Run** (o início do arquivo apaga tabelas da versão anterior).
+3. **Project Settings → API**: copie a Project URL e a anon key para `assets/config.js`.
+4. Para testar rápido: **Authentication → Providers → Email** → desative "Confirm email".
 
-## 2) Subir no GitHub
+## 2) GitHub
 ```bash
 cd spinlav-site
-git init
-git add .
-git commit -m "SpinLav: site com Supabase"
+git init && git add . && git commit -m "SpinLav: site com Supabase e DFD"
 git branch -M main
 git remote add origin https://github.com/SEU-USUARIO/spinlav.git
 git push -u origin main
 ```
-(Crie antes o repositório vazio `spinlav` em https://github.com/new.)
 
-## 3) Publicar na Vercel
-1. Em https://vercel.com → **Add New → Project** → importe o repositório `spinlav`.
-2. Framework Preset: **Other**. Não precisa de build command nem output directory.
-3. Clique em **Deploy**. Cada `git push` na `main` publica de novo.
-4. No Supabase → **Authentication → URL Configuration**, coloque a URL da Vercel em **Site URL** (e em Redirect URLs).
+## 3) Vercel
+Add New → Project → importe o repositório → Framework "Other" → Deploy. Depois, no Supabase → Authentication → URL Configuration, coloque a URL da Vercel em Site URL.
 
-## 4) Criar o administrador
-Cadastre-se no site normalmente e, no SQL Editor, rode:
+## 4) Administrador
+Cadastre-se e rode no SQL Editor:
 ```sql
-update public.profiles set perfil = 'admin' where email = 'seu-email@exemplo.com';
+update public.clientes set perfil = 'admin' where email = 'seu-email@exemplo.com';
 ```
-Depois entre de novo: o botão "Painel" aparece e você gerencia os pedidos.
 
-## Funções
-- Cadastro, login e logout (Supabase Auth)
-- Solicitar serviço (valor estimado calculado no banco)
-- Meus pedidos: acompanhar status e cancelar pedidos pendentes
-- Painel admin: ver todos os pedidos e mudar o status
-
-## Segurança
-A `anon key` fica visível no navegador por natureza. Quem protege os dados são as regras **RLS** de `schema.sql`:
-cliente só vê e cria os próprios pedidos; só admin vê tudo e altera status. Nunca use a `service_role key` neste projeto.
+## Regras de agenda (editáveis em `schema.sql` e `assets/app.js`)
+Seg–sex 8h–17h, sábado 8h–12h, domingo fechado, horários de 1 em 1 hora, até 3 pedidos por horário. Cancelar um pedido libera o horário.
