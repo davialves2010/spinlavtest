@@ -1,0 +1,339 @@
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+
+/* ============ base ============ */
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = id => document.getElementById(id);
+const app = $('app');
+const e = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const money = v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const dataBR = d => d.split('-').reverse().join('/');
+const hoje = () => new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+const STATUS = { pendente: 'Pendente', agendado: 'Agendado', em_andamento: 'Em andamento', concluido: 'Concluído', cancelado: 'Cancelado' };
+const tempoFmt = m => { const h = Math.floor(m / 60), r = m % 60; return h ? `${h}h${r ? ' ' + r + 'min' : ''}` : `${r} min`; };
+const calcTempo = (s, q) => s.tempo_base_min + q * s.tempo_peca_min;
+
+const I = {
+  wash: '<rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="13" r="4"/><path d="M8 6.5h.01"/>',
+  dry: '<path d="M4 8h10a3 3 0 1 0-3-3M4 12h14a3 3 0 1 1-3 3M4 16h7"/>',
+  iron: '<path d="M3 17h18c0-5-4-8-9-8H8a5 5 0 0 0-5 5z"/><path d="M3 20h18"/>',
+  shirt: '<path d="M8 4 3 7l2 4 3-1v10h8V10l3 1 2-4-5-3a4 4 0 0 1-8 0z"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  heart: '<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2 4 4 0 0 1 7 2c0 5.5-7 10-7 10z"/>',
+  shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>'
+};
+const card = (ic, t, d, href, label = 'Saiba mais') =>
+  `<article class="card"><div class="ico"><svg viewBox="0 0 24 24">${I[ic] || I.wash}</svg></div><h3>${e(t)}</h3><p>${e(d)}</p>${href ? `<a class="btn sm" href="${e(href)}">${e(label)}</a>` : ''}</article>`;
+const stepper = n => `<ol class="steps">${['Cadastro', 'Pedido', 'Agendamento', 'Confirmação'].map((t, i) => `<li class="${i + 1 < n ? 'done' : i + 1 === n ? 'on' : ''}"><b>${i + 1 < n ? '✓' : i + 1}</b>${t}</li>`).join('')}</ol>`;
+
+/* ============ estado (carregado uma vez, sem recarregar a página) ============ */
+let user = null, pendingFlash = null, servicosP = null;
+const flash = (m, t = 'ok') => { pendingFlash = [m, t]; };
+const go = h => { if (location.hash === h) route(); else location.hash = h; };
+const getServicos = () => servicosP ??= sb.from('servicos').select('*').eq('ativo', true).order('id')
+  .then(r => { if (r.error) servicosP = null; return r.data || []; });
+
+async function refreshUser() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { user = null; return; }
+  const { data: p } = await sb.from('clientes').select('nome,perfil').eq('id', session.user.id).maybeSingle();
+  user = { id: session.user.id, email: session.user.email, nome: p?.nome || session.user.email, perfil: p?.perfil || 'cliente' };
+}
+
+/* ============ horários (DFD 5.0 Consultar Disponibilidade) ============ */
+const HORARIOS = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
+async function horarios(d) {
+  const dow = new Date(d + 'T12:00:00').getDay();
+  if (dow === 0) return { fechado: true, lista: [] };
+  const base = dow === 6 ? HORARIOS.filter(h => h <= '12:00') : HORARIOS;
+  const { data, error } = await sb.rpc('horarios_lotados', { d });
+  const lotado = new Set((data || []).map(r => String(r.horario).slice(0, 5)));
+  const agora = new Date().toTimeString().slice(0, 5);
+  return { fechado: false, erro: !!error, lista: base.map(h => ({ h, livre: !lotado.has(h) && !(d === hoje() && h <= agora) })) };
+}
+const slotsHtml = l => `<div class="slots">${l.map(s => `<button type="button" class="slot" data-h="${s.h}" ${s.livre ? '' : 'disabled'}>${s.h}<small>${s.livre ? 'Disponível' : 'Indisponível'}</small></button>`).join('')}</div>`;
+
+/* ============ cabeçalho e rodapé (desenhados uma vez, só atualizam) ============ */
+const NAVKEY = { inicio: 'inicio', servicos: 'servicos', solicitar: 'servicos', agendar: 'servicos', horarios: 'servicos', sobre: 'sobre' };
+function renderHeader(key = '') {
+  const ativo = NAVKEY[key] || '';
+  const a = (h, t, k) => `<a href="${h}"${k === ativo ? ' class="on"' : ''}>${t}</a>`;
+  const conta = user
+    ? `<a class="btn" href="${user.perfil === 'admin' ? '#admin' : '#pedidos'}">${user.perfil === 'admin' ? 'Painel' : 'Meus pedidos'}</a><a class="sair" href="#" id="sair">Sair</a>`
+    : '<a class="btn" href="#login">Entrar</a>';
+  $('hdr').innerHTML = `<div class="wrap bar"><a class="logo" href="#inicio"><img src="assets/img/logo.jpg" alt="">SpinLav</a><button class="menu" id="menu" type="button" aria-label="Abrir menu" aria-expanded="false"><span></span></button><nav id="nv">${a('#inicio', 'Início', 'inicio')}${a('#servicos', 'Serviços', 'servicos')}${a('#sobre', 'Sobre Nós', 'sobre')}${conta}</nav></div>`;
+  const mb = $('menu'), nv = $('nv');
+  mb.addEventListener('click', () => { const o = nv.classList.toggle('open'); mb.setAttribute('aria-expanded', o); });
+  nv.addEventListener('click', ev => { if (ev.target.closest('a')) { nv.classList.remove('open'); mb.setAttribute('aria-expanded', 'false'); } });
+  $('sair')?.addEventListener('click', async ev => {
+    ev.preventDefault(); await sb.auth.signOut(); user = null; flash('Você saiu da sua conta.'); go('#inicio');
+  });
+}
+function renderFooter() {
+  $('ftr').innerHTML = `<div class="wrap bar"><div><div class="logo">SpinLav</div><p>Cuidado e praticidade para uma rotina mais leve.</p></div><nav><a href="#inicio">Início</a><a href="#servicos">Serviços</a><a href="#sobre">Sobre Nós</a></nav></div>`;
+}
+function showFlash() {
+  const f = pendingFlash; pendingFlash = null;
+  $('flash').innerHTML = f ? `<div class="wrap" style="padding-top:20px"><div class="alert ${e(f[1])}">${e(f[0])}</div></div>` : '';
+}
+
+/* ============ páginas (views) ============ */
+const SIDE = t => `<div class="side"><img src="assets/img/logo.jpg" alt="Logo SpinLav"><h2>Uma rotina mais leve começa aqui.</h2><p style="margin:0">${t}</p></div>`;
+const aviso = (m, href, label) => `<div class="wrap page"><div class="card vazio"><p>${m}</p><a class="btn" href="${href}">${label}</a></div></div>`;
+
+async function vInicio({ draw }) {
+  const s = (await getServicos()).slice(0, 3);
+  draw(`<section class="hero"><div class="wrap">
+    <div><div class="eyebrow">Bem-vindo à SpinLav</div><h1>Suas roupas limpas, sua rotina mais leve</h1>
+    <p>A SpinLav oferece serviços de lavanderia com cuidado, praticidade e confiança para deixar mais tempo livre na sua rotina.</p>
+    <div class="btns"><a class="btn" href="#servicos">Conheça nossos serviços</a><a class="btn o" href="#sobre">Sobre a SpinLav</a></div></div>
+    <div class="pic"><img class="ph" style="object-fit:cover;display:block" src="assets/img/toalhas.svg" alt="Toalhas limpas e dobradas"><div class="seal"><img src="assets/img/logo.jpg" alt="Logo SpinLav"></div></div>
+  </div></section>
+  <section class="sec" style="background:var(--pale)"><div class="wrap"><h2>Um cuidado que cabe na sua rotina</h2><p class="sub"></p><div class="grid g3">
+    ${card('clock', 'Mais tempo livre', 'Deixe a lavagem com a gente e use seu tempo no que importa.')}
+    ${card('shield', 'Cuidado com cada peça', 'Tratamos cada tecido com atenção e respeito.')}
+    ${card('heart', 'Praticidade e confiança', 'Um serviço simples, organizado e feito para o seu dia a dia.')}
+  </div></div></section>
+  <section class="sec white"><div class="wrap"><h2>Para cada peça, um jeito de cuidar</h2><p class="sub"></p>
+    <div class="grid g3">${s.map(x => card(x.icone, x.nome, x.descricao)).join('')}</div>
+    <div class="center"><a class="btn" href="#servicos">Ver todos os serviços</a></div></div></section>`);
+}
+
+async function vServicos({ draw }) {
+  const s = await getServicos();
+  draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Nossos serviços</div><h1>Cuidado para cada tipo de roupa</h1>
+    <p style="margin:0;max-width:640px">Escolha a opção que combina com as suas peças. Cada cuidado foi pensado para facilitar o seu dia a dia.</p>
+    <p style="margin:18px 0 0"><a class="btn o" href="#horarios">Consultar horários</a></p></div>
+    ${s.length ? '' : '<p class="alert err">Não foi possível carregar os serviços. Confira a configuração do Supabase.</p>'}
+    <div class="grid g4">${s.map(x => card(x.icone, x.nome, `${x.descricao} A partir de ${money(x.preco_peca)} por peça.`, '#solicitar?servico=' + x.id, 'Solicitar serviço')).join('')}</div></div>`);
+}
+
+function vSobre({ draw }) {
+  draw(`<section class="hero about"><div class="wrap">
+    <div class="txt"><div class="eyebrow">Sobre nós</div><h1>Cuidar das suas roupas é cuidar do seu tempo</h1>
+    <p>A SpinLav é uma lavanderia profissional criada para oferecer praticidade e confiança no tratamento das roupas. Nossa proposta é tornar essa parte da rotina mais simples e atenciosa.</p>
+    <div class="seal"><img src="assets/img/logo.jpg" alt="Logo SpinLav"></div></div>
+    <div class="pic"><img class="ph" style="object-fit:cover;display:block" src="assets/img/sobre.jpg" alt="Profissional trabalhando na lavanderia"></div>
+  </div></section>
+  <section class="about-cards"><div class="wrap"><div class="grid g3">
+    ${card('target', 'Missão', 'Facilitar a rotina das pessoas com serviços de lavanderia práticos, cuidadosos e confiáveis.')}
+    ${card('eye', 'Visão', 'Ser referência em lavanderia profissional, reconhecida pela qualidade e pela atenção às pessoas.')}
+    ${card('heart', 'Compromisso com o cliente', 'Atendimento claro e organizado, com respeito a cada peça e ao tempo de quem confia na SpinLav.')}
+  </div></div></section>`);
+}
+
+function vLogin({ draw }) {
+  if (user) return go(user.perfil === 'admin' ? '#admin' : '#pedidos');
+  draw(`<div class="wrap login">
+    <form class="card" id="f"><div class="eyebrow" style="margin:0">Área do cliente</div><h1>Bem-vindo à SpinLav.</h1>
+      <p style="margin:0">Entre para solicitar serviços e acompanhar seus pedidos.</p>
+      <p class="alert err" id="err" hidden></p>
+      <label for="email">E-mail</label><input id="email" type="email" required autocomplete="email">
+      <label for="senha">Senha</label><input id="senha" type="password" required autocomplete="current-password">
+      <button class="btn fit" type="submit" id="b">Entrar</button>
+      <p class="note">Ainda não tem conta? <a href="#cadastro"><strong>Cadastre-se</strong></a></p></form>
+    ${SIDE('Cuidado e praticidade com a identidade acolhedora da SpinLav.')}</div>`);
+  $('f').addEventListener('submit', async ev => {
+    ev.preventDefault(); $('b').disabled = true; $('err').hidden = true;
+    const { error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('senha').value });
+    if (error) { $('err').textContent = error.message.includes('Email not confirmed') ? 'Confirme seu e-mail antes de entrar (veja sua caixa de entrada).' : 'E-mail ou senha incorretos.'; $('err').hidden = false; $('b').disabled = false; return; }
+    await refreshUser(); flash('Olá, ' + user.nome + '! Que bom ter você de volta.'); go(user.perfil === 'admin' ? '#admin' : '#pedidos');
+  });
+}
+
+function vCadastro({ draw }) {
+  if (user) return go('#pedidos');
+  draw(`<div class="wrap login">
+    <form class="card" id="f"><div class="eyebrow" style="margin:0">Novo por aqui</div><h1>Criar conta</h1>
+      <p class="alert err" id="err" hidden></p>
+      <label for="nome">Nome</label><input id="nome" type="text" required minlength="2">
+      <label for="email">E-mail</label><input id="email" type="email" required>
+      <label for="senha">Senha</label><input id="senha" type="password" minlength="6" required>
+      <label for="conf">Confirmar senha</label><input id="conf" type="password" required>
+      <button class="btn fit" type="submit" id="b">Cadastrar</button>
+      <p class="note">Já tem conta? <a href="#login"><strong>Entrar</strong></a></p></form>
+    ${SIDE('Crie sua conta e peça sua coleta em poucos cliques.')}</div>`);
+  const erro = m => { $('err').textContent = m; $('err').hidden = false; $('b').disabled = false; };
+  $('f').addEventListener('submit', async ev => {
+    ev.preventDefault(); $('b').disabled = true; $('err').hidden = true;
+    if ($('senha').value !== $('conf').value) return erro('As senhas não coincidem.');
+    const { data, error } = await sb.auth.signUp({ email: $('email').value.trim(), password: $('senha').value, options: { data: { nome: $('nome').value.trim() }, emailRedirectTo: location.origin + '/' } });
+    if (error) return erro(error.message.includes('already') ? 'Já existe uma conta com este e-mail.' : error.message);
+    if (data.session) { await refreshUser(); flash('Conta criada com sucesso! Agora você já pode solicitar um serviço.'); go('#servicos'); }
+    else { flash('Conta criada! Enviamos um e-mail de confirmação: confirme e depois faça login.'); go('#login'); }
+  });
+}
+
+async function vSolicitar({ draw, need, live, params }) {
+  if (!need()) return;
+  const servicos = await getServicos(); if (!live()) return;
+  const sel = Number(params.get('servico') || 0);
+  draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Novo pedido</div><h1>Solicitar serviço</h1></div>
+    <div class="form">${stepper(2)}<form class="card" id="f">
+      <p class="alert err" id="err" hidden></p>
+      <label for="serv">Serviço / tipo de lavagem</label>
+      <select id="serv" required><option value="">Selecione…</option>${servicos.map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${e(s.nome)} — ${money(s.preco_peca)}/peça</option>`).join('')}</select>
+      <label for="qtd">Quantidade de peças</label><input id="qtd" type="number" min="1" max="200" value="1" required>
+      <label for="obs">Observações (opcional)</label><textarea id="obs" maxlength="500"></textarea>
+      <div class="resumo" id="prev" hidden></div>
+      <p class="note">O valor final é confirmado pela lavanderia após a conferência das peças. No próximo passo você escolhe data e horário.</p>
+      <button class="btn fit" type="submit" id="b">Registrar pedido e agendar</button></form></div></div>`);
+  const calc = () => {
+    const s = servicos.find(x => x.id === Number($('serv').value)), q = Number($('qtd').value) || 0, p = $('prev');
+    if (!s || q < 1) { p.hidden = true; return; }
+    p.hidden = false; p.innerHTML = `<span>Tempo estimado: <strong>${tempoFmt(calcTempo(s, q))}</strong></span><span>Valor estimado: <strong>${money(q * s.preco_peca)}</strong></span>`;
+  };
+  $('serv').addEventListener('change', calc); $('qtd').addEventListener('input', calc); calc();
+  $('f').addEventListener('submit', async ev => {
+    ev.preventDefault(); $('b').disabled = true; $('err').hidden = true;
+    const { data, error } = await sb.from('pedidos').insert({ cliente_id: user.id, servico_id: Number($('serv').value), quantidade: Number($('qtd').value), observacoes: $('obs').value.trim() || null }).select('id').single();
+    if (error) { $('err').textContent = 'Não foi possível registrar o pedido: ' + error.message; $('err').hidden = false; $('b').disabled = false; return; }
+    go('#agendar?pedido=' + data.id);
+  });
+}
+
+async function vAgendar({ draw, need, live, params }) {
+  if (!need()) return;
+  const id = Number(params.get('pedido') || 0);
+  const { data: p } = await sb.from('pedidos').select('*, servicos(nome)').eq('id', id).eq('cliente_id', user.id).maybeSingle();
+  if (!live()) return;
+  if (!p) return draw(aviso('Pedido não encontrado.', '#solicitar', 'Fazer um pedido'));
+  if (p.status !== 'pendente') return draw(aviso('Este pedido não está aguardando agendamento.', '#pedidos', 'Ver meus pedidos'));
+  draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Pedido #${p.id}</div><h1>Agendar data e horário</h1></div>
+    <div class="form">${stepper(3)}<form class="card" id="f">
+      <div class="resumo"><span>Serviço: <strong>${e(p.servicos.nome)}</strong></span><span>Peças: <strong>${p.quantidade}</strong></span><span>Tempo estimado: <strong>${tempoFmt(p.tempo_estimado_min)}</strong></span><span>Valor: <strong>${money(p.valor_estimado)}</strong></span></div>
+      <p class="alert err" id="err" hidden></p>
+      <label for="tipo">Tipo de agendamento</label>
+      <select id="tipo"><option value="coleta">Coleta em casa</option><option value="balcao">Levar à lavanderia</option></select>
+      <label for="dt">Data</label><input id="dt" type="date" min="${hoje()}" required>
+      <label>Horários</label><div id="slots"><p class="note">Escolha uma data para consultar os horários disponíveis.</p></div>
+      <button class="btn fit" type="submit" id="b" disabled>Confirmar agendamento</button></form></div></div>`);
+  let h = '';
+  const carregar = async () => {
+    h = ''; $('b').disabled = true;
+    if (!$('dt').value || $('dt').value < hoje()) { $('slots').innerHTML = '<p class="note">Escolha uma data a partir de hoje.</p>'; return; }
+    $('slots').innerHTML = '<p class="note">Consultando horários…</p>';
+    const r = await horarios($('dt').value); if (!live()) return;
+    $('slots').innerHTML = r.fechado ? '<p class="note">Não atendemos aos domingos. Escolha outra data.</p>'
+      : r.erro ? '<p class="alert err">Não foi possível consultar os horários.</p>'
+      : r.lista.some(s => s.livre) ? slotsHtml(r.lista) : '<p class="note">Sem horários disponíveis nesta data. Tente outro dia.</p>';
+  };
+  $('dt').addEventListener('change', () => { $('err').hidden = true; carregar(); });
+  $('slots').addEventListener('click', ev => {
+    const s = ev.target.closest('.slot'); if (!s || s.disabled) return;
+    $('slots').querySelectorAll('.slot').forEach(x => x.classList.remove('sel')); s.classList.add('sel'); h = s.dataset.h; $('b').disabled = false;
+  });
+  $('f').addEventListener('submit', async ev => {
+    ev.preventDefault(); if (!h) return; $('b').disabled = true; $('err').hidden = true;
+    const { error } = await sb.from('agendamentos').insert({ pedido_id: p.id, cliente_id: user.id, tipo: $('tipo').value, data_agendada: $('dt').value, horario: h });
+    if (error) { $('err').textContent = /lotado/i.test(error.message) ? 'Esse horário acabou de ser preenchido. Escolha outro.' : 'Não foi possível agendar: ' + error.message; $('err').hidden = false; carregar(); return; }
+    flash(`Agendamento confirmado para ${dataBR($('dt').value)} às ${h}. Obrigado!`); go('#pedidos');
+  });
+}
+
+async function vHorarios({ draw, live }) {
+  draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Agenda</div><h1>Consultar horários</h1>
+    <p style="margin:0;max-width:640px">Escolha uma data e veja os horários disponíveis para coleta ou entrega. Atendemos de segunda a sexta, das 8h às 17h, e aos sábados, das 8h às 12h.</p></div>
+    <div class="card form"><label for="dt">Data</label><input id="dt" type="date" min="${hoje()}" value="${hoje()}"><div id="slots"></div>
+    <a class="btn fit" href="${user ? '#solicitar' : '#login'}">${user ? 'Fazer um pedido' : 'Entrar para agendar'}</a></div></div>`);
+  const mostrar = async () => {
+    const d = $('dt').value;
+    if (!d || d < hoje()) { $('slots').innerHTML = '<p class="note">Escolha uma data a partir de hoje.</p>'; return; }
+    $('slots').innerHTML = '<p class="note">Consultando horários…</p>';
+    const r = await horarios(d); if (!live()) return;
+    $('slots').innerHTML = r.fechado ? '<p class="note">Não atendemos aos domingos.</p>' : r.erro ? '<p class="alert err">Não foi possível consultar os horários.</p>' : slotsHtml(r.lista);
+    $('slots').querySelectorAll('.slot').forEach(x => x.style.cursor = 'default');
+  };
+  $('dt').addEventListener('change', mostrar); mostrar();
+}
+
+const ag = p => Array.isArray(p.agendamentos) ? p.agendamentos[0] : p.agendamentos;
+const quando = (p, curto) => { const a = ag(p); return a ? `${dataBR(a.data_agendada)} às ${String(a.horario).slice(0, 5)}<br><small>${a.tipo === 'coleta' ? (curto ? 'Coleta' : 'Coleta em casa') : (curto ? 'Balcão' : 'Na lavanderia')}</small>` : '—'; };
+
+async function vPedidos({ draw, need, live }) {
+  if (!need()) return;
+  const { data, error } = await sb.from('pedidos').select('*, servicos(nome), agendamentos(data_agendada,horario,tipo)').eq('cliente_id', user.id).order('criado_em', { ascending: false });
+  if (!live()) return;
+  const l = data || [];
+  draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Olá, ${e(user.nome)}</div><h1>Meus pedidos</h1></div><div class="card">
+    ${error ? '<p class="alert err">Não foi possível carregar seus pedidos.</p>' : ''}
+    ${!l.length ? '<div class="vazio"><p>Você ainda não fez nenhum pedido.</p><a class="btn" href="#solicitar">Solicitar serviço</a></div>' : `
+    <div class="scroll"><table class="tbl"><thead><tr><th>Nº</th><th>Serviço</th><th>Peças</th><th>Tempo est.</th><th>Agendamento</th><th>Valor est.</th><th>Status</th><th></th></tr></thead><tbody>
+    ${l.map(p => `<tr><td data-label="Pedido">#${p.id}</td><td data-label="Serviço">${e(p.servicos?.nome)}</td><td data-label="Peças">${p.quantidade}</td>
+      <td data-label="Tempo est.">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p)}</td><td data-label="Valor est.">${money(p.valor_estimado)}</td>
+      <td data-label="Status"><span class="badge s-${p.status}">${STATUS[p.status]}</span></td>
+      <td><div class="acoes">${p.status === 'pendente' ? `<a class="btn mini" href="#agendar?pedido=${p.id}">Agendar</a>` : ''}${['pendente', 'agendado'].includes(p.status) ? `<button class="btn o mini" data-cancelar="${p.id}">Cancelar</button>` : ''}</div></td></tr>`).join('')}
+    </tbody></table></div><div><a class="btn" href="#solicitar">Novo pedido</a></div>`}</div></div>`);
+  app.querySelectorAll('[data-cancelar]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Cancelar este pedido? O horário agendado será liberado.')) return;
+    const { error } = await sb.from('pedidos').update({ status: 'cancelado' }).eq('id', btn.dataset.cancelar).in('status', ['pendente', 'agendado']);
+    flash(error ? 'Este pedido não pode mais ser cancelado.' : 'Pedido cancelado.', error ? 'err' : 'ok'); route();
+  }));
+}
+
+async function vAdmin({ draw, need, live }) {
+  if (!need(true)) return;
+  const { data, error } = await sb.from('pedidos').select('*, servicos(nome), clientes(nome,email), agendamentos(data_agendada,horario,tipo)').order('criado_em', { ascending: false });
+  if (!live()) return;
+  const l = data || [];
+  draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Administração</div><h1>Pedidos dos clientes</h1></div><div class="card">
+    ${error ? '<p class="alert err">Não foi possível carregar os pedidos.</p>' : ''}
+    ${!l.length ? '<div class="vazio"><p>Nenhum pedido recebido ainda.</p></div>' : `
+    <div class="scroll"><table class="tbl"><thead><tr><th>Nº</th><th>Cliente</th><th>Serviço</th><th>Peças</th><th>Tempo</th><th>Agendamento</th><th>Valor</th><th>Obs.</th><th>Status</th></tr></thead><tbody>
+    ${l.map(p => `<tr><td data-label="Pedido">#${p.id}</td><td data-label="Cliente">${e(p.clientes?.nome)}<br><small>${e(p.clientes?.email)}</small></td><td data-label="Serviço">${e(p.servicos?.nome)}</td><td data-label="Peças">${p.quantidade}</td>
+      <td data-label="Tempo">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p, true)}</td><td data-label="Valor">${money(p.valor_estimado)}</td><td data-label="Obs.">${e(p.observacoes || '—')}</td>
+      <td data-label="Status"><div class="inline"><select id="st-${p.id}">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${p.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+      <button class="btn mini" data-salvar="${p.id}">Salvar</button></div></td></tr>`).join('')}
+    </tbody></table></div>`}</div></div>`);
+  app.querySelectorAll('[data-salvar]').forEach(btn => btn.addEventListener('click', async () => {
+    const { error } = await sb.from('pedidos').update({ status: $('st-' + btn.dataset.salvar).value }).eq('id', btn.dataset.salvar);
+    flash(error ? 'Não foi possível atualizar o status.' : 'Status atualizado.', error ? 'err' : 'ok'); route();
+  }));
+}
+
+/* ============ roteador (troca de página instantânea, sem recarregar) ============ */
+const routes = { inicio: vInicio, servicos: vServicos, sobre: vSobre, login: vLogin, cadastro: vCadastro, solicitar: vSolicitar, agendar: vAgendar, horarios: vHorarios, pedidos: vPedidos, admin: vAdmin };
+let token = 0;
+async function route() {
+  const [name, qs] = location.hash.replace(/^#/, '').split('?');
+  const key = routes[name] ? name : 'inicio';
+  const t = ++token, live = () => t === token;
+  let rendered = false;
+  const timer = setTimeout(() => { if (live() && !rendered) app.innerHTML = '<div class="wrap page"><p class="note">Carregando…</p></div>'; }, 150);
+  const draw = html => {
+    if (!live()) return false;
+    rendered = true; clearTimeout(timer);
+    app.innerHTML = html; app.classList.remove('in'); void app.offsetWidth; app.classList.add('in');
+    scrollTo(0, 0); return true;
+  };
+  const need = (admin = false) => {
+    if (!user) { flash('Entre na sua conta para continuar.', 'err'); go('#login'); return false; }
+    if (admin && user.perfil !== 'admin') { flash('Acesso restrito à administração.', 'err'); go('#inicio'); return false; }
+    return true;
+  };
+  renderHeader(key); showFlash();
+  try { await routes[key]({ draw, need, live, params: new URLSearchParams(qs || '') }); }
+  catch (err) { console.error(err); draw(aviso('Algo deu errado ao carregar esta página.', '#inicio', 'Voltar ao início')); }
+  clearTimeout(timer);
+  document.title = 'SpinLav — lavanderia profissional';
+}
+
+/* ============ inicialização ============ */
+sb.auth.onAuthStateChange(ev => {
+  if (ev === 'SIGNED_IN' || ev === 'SIGNED_OUT') setTimeout(async () => { await refreshUser(); renderHeader(location.hash.replace(/^#/, '').split('?')[0]); }, 0);
+});
+async function boot() {
+  const h = location.hash;
+  if (/access_token|error_description/.test(h)) {          // retorno do link de confirmação do e-mail
+    const p = new URLSearchParams(h.slice(1));
+    await sb.auth.getSession();
+    await refreshUser();
+    if (p.get('error_description')) { flash('O link do e-mail é inválido ou expirou. Entre ou cadastre-se novamente.', 'err'); history.replaceState(null, '', '#login'); }
+    else { flash('E-mail confirmado! Você já pode usar sua conta.'); history.replaceState(null, '', user ? '#servicos' : '#login'); }
+  } else await refreshUser();
+  renderFooter(); addEventListener('hashchange', route); route();
+}
+renderHeader(); renderFooter();
+boot();

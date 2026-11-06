@@ -1,33 +1,3 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Horários disponíveis — SpinLav</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="assets/style.css">
-</head>
-<body>
-<header id="hdr"></header>
-<div id="flash"></div>
-<main id="app"></main>
-<footer id="ftr"></footer>
-<script type="module">
-import { app, layout, hoje, horarios, slotsHtml } from './assets/app.js';
-const u = await layout('servicos');
-app.innerHTML = `<div class="wrap page"><div class="head"><div class="eyebrow">Agenda</div><h1>Consultar horários</h1>
-  <p style="margin:0;max-width:640px">Escolha uma data e veja os horários disponíveis para coleta ou entrega. Atendemos de segunda a sexta, das 8h às 17h, e aos sábados, das 8h às 12h.</p></div>
-  <div class="card form"><label for="dt">Data</label><input id="dt" type="date" min="${hoje()}" value="${hoje()}">
-  <div id="slots"></div>
-  <a class="btn fit" href="${u ? 'solicitar.html' : 'login.html'}">${u ? 'Fazer um pedido' : 'Entrar para agendar'}</a></div></div>`;
-const mostrar = async () => {
-  if (!dt.value || dt.value < hoje()) { slots.innerHTML = '<p class="note">Escolha uma data a partir de hoje.</p>'; return; }
-  slots.innerHTML = '<p class="note">Consultando horários…</p>';
-  const r = await horarios(dt.value);
-  slots.innerHTML = r.fechado ? '<p class="note">Não atendemos aos domingos.</p>' : r.erro ? '<p class="alert err">Não foi possível consultar os horários.</p>' : slotsHtml(r.lista);
-  slots.querySelectorAll('.slot').forEach(x => x.style.cursor = 'default');
-};
-dt.addEventListener('change', mostrar); mostrar();
-</script>
-</body>
-</html>
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>SpinLav</title>
+<script>var h=location.hash;location.replace('/'+(/access_token|error/.test(h)?h:'#horarios'+location.search));</script></head>
+<body><a href="/#horarios">Continuar para o SpinLav</a></body></html>

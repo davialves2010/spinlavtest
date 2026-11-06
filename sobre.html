@@ -1,32 +1,3 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sobre Nós — SpinLav</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="assets/style.css">
-</head>
-<body>
-<header id="hdr"></header>
-<div id="flash"></div>
-<main id="app"></main>
-<footer id="ftr"></footer>
-<script type="module">
-import { app, layout, card } from './assets/app.js';
-await layout('sobre');
-app.innerHTML = `
-<section class="hero about"><div class="wrap">
-  <div class="txt"><div class="eyebrow">Sobre nós</div><h1>Cuidar das suas roupas é cuidar do seu tempo</h1>
-  <p>A SpinLav é uma lavanderia profissional criada para oferecer praticidade e confiança no tratamento das roupas. Nossa proposta é tornar essa parte da rotina mais simples e atenciosa.</p>
-  <div class="seal"><img src="assets/img/logo.jpg" alt="Logo SpinLav"></div></div>
-  <div class="pic"><img class="ph" style="object-fit:cover;display:block" src="assets/img/sobre.jpg" alt="Profissional trabalhando na lavanderia"></div>
-</div></section>
-<section class="about-cards"><div class="wrap"><div class="grid g3">
-  ${card('target','Missão','Facilitar a rotina das pessoas com serviços de lavanderia práticos, cuidadosos e confiáveis.')}
-  ${card('eye','Visão','Ser referência em lavanderia profissional, reconhecida pela qualidade e pela atenção às pessoas.')}
-  ${card('heart','Compromisso com o cliente','Atendimento claro e organizado, com respeito a cada peça e ao tempo de quem confia na SpinLav.')}
-</div></div></section>`;
-</script>
-</body>
-</html>
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>SpinLav</title>
+<script>var h=location.hash;location.replace('/'+(/access_token|error/.test(h)?h:'#sobre'+location.search));</script></head>
+<body><a href="/#sobre">Continuar para o SpinLav</a></body></html>

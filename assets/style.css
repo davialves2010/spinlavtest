@@ -136,3 +136,7 @@ img{max-width:100%}
 @media(max-width:640px){.g3>:last-child:nth-child(odd){grid-column:auto}.steps li{font-size:13px}.page{padding:40px 0 56px}.slots{grid-template-columns:repeat(3,1fr)}.btns .btn{flex:1;text-align:center}}
 @media(max-width:380px){body{font-size:15.5px}.wrap{padding:0 16px}.slots{grid-template-columns:repeat(2,1fr)}}
 .s-agendado{background:#e1e9ff;color:#24408a}
+/* transição suave entre páginas (SPA) */
+@keyframes entra{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#app.in{animation:entra .22s ease}
+@media (prefers-reduced-motion:reduce){#app.in{animation:none}.btn,.card,.slot{transition:none}}

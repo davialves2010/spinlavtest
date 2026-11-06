@@ -3,38 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Início — SpinLav</title>
+<meta name="description" content="SpinLav — lavanderia profissional. Suas roupas limpas, sua rotina mais leve.">
+<title>SpinLav — lavanderia profissional</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="assets/style.css">
+<link rel="modulepreload" href="assets/spa.js">
+<link rel="preload" as="image" href="assets/img/toalhas.svg">
 </head>
 <body>
 <header id="hdr"></header>
 <div id="flash"></div>
 <main id="app"></main>
 <footer id="ftr"></footer>
-<script type="module">
-import { sb, app, layout, card } from './assets/app.js';
-await layout('inicio');
-const { data } = await sb.from('servicos').select('*').eq('ativo', true).order('id').limit(3);
-app.innerHTML = `
-<section class="hero"><div class="wrap">
-  <div>
-    <div class="eyebrow">Bem-vindo à SpinLav</div>
-    <h1>Suas roupas limpas, sua rotina mais leve</h1>
-    <p>A SpinLav oferece serviços de lavanderia com cuidado, praticidade e confiança para deixar mais tempo livre na sua rotina.</p>
-    <div class="btns"><a class="btn" href="servicos.html">Conheça nossos serviços</a><a class="btn o" href="sobre.html">Sobre a SpinLav</a></div>
-  </div>
-  <div class="pic"><img class="ph" style="object-fit:cover;display:block" src="assets/img/toalhas.svg" alt="Toalhas limpas e dobradas"><div class="seal"><img src="assets/img/logo.jpg" alt="Logo SpinLav"></div></div>
-</div></section>
-<section class="sec" style="background:var(--pale)"><div class="wrap"><h2>Um cuidado que cabe na sua rotina</h2><p class="sub"></p><div class="grid g3">
-  ${card('clock','Mais tempo livre','Deixe a lavagem com a gente e use seu tempo no que importa.')}
-  ${card('shield','Cuidado com cada peça','Tratamos cada tecido com atenção e respeito.')}
-  ${card('heart','Praticidade e confiança','Um serviço simples, organizado e feito para o seu dia a dia.')}
-</div></div></section>
-<section class="sec white"><div class="wrap"><h2>Para cada peça, um jeito de cuidar</h2><p class="sub"></p>
-  <div class="grid g3">${(data || []).map(s => card(s.icone, s.nome, s.descricao)).join('')}</div>
-  <div class="center"><a class="btn" href="servicos.html">Ver todos os serviços</a></div>
-</div></section>`;
-</script>
+<noscript><p style="padding:24px">Ative o JavaScript para usar o site da SpinLav.</p></noscript>
+<script type="module" src="assets/spa.js"></script>
 </body>
 </html>

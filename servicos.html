@@ -1,27 +1,3 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Serviços — SpinLav</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="assets/style.css">
-</head>
-<body>
-<header id="hdr"></header>
-<div id="flash"></div>
-<main id="app"></main>
-<footer id="ftr"></footer>
-<script type="module">
-import { sb, app, layout, card, money } from './assets/app.js';
-await layout('servicos');
-const { data, error } = await sb.from('servicos').select('*').eq('ativo', true).order('id');
-app.innerHTML = `<div class="wrap page">
-  <div class="head"><div class="eyebrow">Nossos serviços</div><h1>Cuidado para cada tipo de roupa</h1>
-  <p style="margin:0;max-width:640px">Escolha a opção que combina com as suas peças. Cada cuidado foi pensado para facilitar o seu dia a dia.</p><p style="margin:18px 0 0"><a class="btn o" href="disponibilidade.html">Consultar horários</a></p></div>
-  ${error ? '<p class="alert err">Não foi possível carregar os serviços. Confira a configuração do Supabase.</p>' : ''}
-  <div class="grid g4">${(data || []).map(s => card(s.icone, s.nome, `${s.descricao} A partir de ${money(s.preco_peca)} por peça.`, 'solicitar.html?servico=' + s.id, 'Solicitar serviço')).join('')}</div>
-</div>`;
-</script>
-</body>
-</html>
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>SpinLav</title>
+<script>var h=location.hash;location.replace('/'+(/access_token|error/.test(h)?h:'#servicos'+location.search));</script></head>
+<body><a href="/#servicos">Continuar para o SpinLav</a></body></html>
