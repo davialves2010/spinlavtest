@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Criar conta — SpinLav</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header id="hdr"></header>
+<div id="flash"></div>
+<main id="app"></main>
+<footer id="ftr"></footer>
+<script type="module">
+import { sb, app, layout, flash } from './assets/app.js';
+const u = await layout('login');
+if (u) location.href = 'meus-pedidos.html';
+app.innerHTML = `<div class="wrap login">
+  <form class="card" id="f">
+    <div class="eyebrow" style="margin:0">Novo por aqui</div>
+    <h1>Criar conta</h1>
+    <p class="alert err" id="err" hidden></p>
+    <label for="nome">Nome</label><input id="nome" type="text" required minlength="2">
+    <label for="email">E-mail</label><input id="email" type="email" required>
+    <label for="senha">Senha</label><input id="senha" type="password" minlength="6" required>
+    <label for="conf">Confirmar senha</label><input id="conf" type="password" required>
+    <button class="btn fit" type="submit" id="b">Cadastrar</button>
+    <p class="note">Já tem conta? <a href="login.html"><strong>Entrar</strong></a></p>
+  </form>
+  <div class="side"><img src="assets/img/logo.jpg" alt="Logo SpinLav"><h2>Uma rotina mais leve começa aqui.</h2><p style="margin:0">Crie sua conta e peça sua coleta em poucos cliques.</p></div>
+</div>`;
+const erro = m => { err.textContent = m; err.hidden = false; b.disabled = false; };
+f.addEventListener('submit', async ev => {
+  ev.preventDefault(); b.disabled = true; err.hidden = true;
+  if (senha.value !== conf.value) return erro('As senhas não coincidem.');
+  const { data, error } = await sb.auth.signUp({ email: email.value.trim(), password: senha.value, options: { data: { nome: nome.value.trim() }, emailRedirectTo: location.origin + '/login.html' } });
+  if (error) return erro(error.message.includes('already') ? 'Já existe uma conta com este e-mail.' : error.message);
+  if (data.session) { flash('Conta criada com sucesso! Agora você já pode solicitar um serviço.'); location.href = 'servicos.html'; }
+  else { flash('Conta criada! Enviamos um e-mail de confirmação: confirme e depois faça login.'); location.href = 'login.html'; }
+});
+</script>
+</body>
+</html>

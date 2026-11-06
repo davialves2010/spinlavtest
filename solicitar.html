@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solicitar serviço — SpinLav</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header id="hdr"></header>
+<div id="flash"></div>
+<main id="app"></main>
+<footer id="ftr"></footer>
+<script type="module">
+import { sb, app, layout, flash, exigir, e, money, hoje } from './assets/app.js';
+const u = await layout('servicos'); exigir(u);
+const { data: servicos } = await sb.from('servicos').select('*').eq('ativo', true).order('id');
+const sel = Number(new URLSearchParams(location.search).get('servico') || 0);
+app.innerHTML = `<div class="wrap page"><div class="head"><div class="eyebrow">Novo pedido</div><h1>Solicitar serviço</h1></div>
+  <form class="card form" id="f">
+    <p class="alert err" id="err" hidden></p>
+    <label for="serv">Serviço</label>
+    <select id="serv" required><option value="">Selecione…</option>${(servicos || []).map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${e(s.nome)} — ${money(s.preco_peca)}/peça</option>`).join('')}</select>
+    <label for="qtd">Quantidade de peças</label><input id="qtd" type="number" min="1" max="200" value="1" required>
+    <label for="data">Data da coleta</label><input id="data" type="date" min="${hoje()}" required>
+    <label for="obs">Observações (opcional)</label><textarea id="obs" maxlength="500"></textarea>
+    <p class="note">O valor final é confirmado pela lavanderia após a conferência das peças.</p>
+    <button class="btn fit" type="submit" id="b">Enviar pedido</button>
+  </form></div>`;
+f.addEventListener('submit', async ev => {
+  ev.preventDefault(); b.disabled = true; err.hidden = true;
+  const { error } = await sb.from('pedidos').insert({ usuario_id: u.id, servico_id: Number(serv.value), quantidade: Number(qtd.value), data_coleta: data.value, observacoes: obs.value.trim() || null });
+  if (error) { err.textContent = 'Não foi possível enviar o pedido: ' + error.message; err.hidden = false; b.disabled = false; return; }
+  flash('Pedido enviado! Você pode acompanhar o andamento abaixo.'); location.href = 'meus-pedidos.html';
+});
+</script>
+</body>
+</html>

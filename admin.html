@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de pedidos — SpinLav</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header id="hdr"></header>
+<div id="flash"></div>
+<main id="app"></main>
+<footer id="ftr"></footer>
+<script type="module">
+import { sb, app, layout, flash, exigir, e, money, dataBR, STATUS } from './assets/app.js';
+const u = await layout('admin'); exigir(u, true);
+const { data, error } = await sb.from('pedidos').select('*, servicos(nome), profiles(nome,email)').order('criado_em', { ascending: false });
+const lista = data || [];
+app.innerHTML = `<div class="wrap page"><div class="head"><div class="eyebrow">Administração</div><h1>Pedidos dos clientes</h1></div><div class="card">
+  ${error ? '<p class="alert err">Não foi possível carregar os pedidos.</p>' : ''}
+  ${!lista.length ? '<div class="vazio"><p>Nenhum pedido recebido ainda.</p></div>' : `
+  <div class="scroll"><table class="tbl"><tr><th>Nº</th><th>Cliente</th><th>Serviço</th><th>Peças</th><th>Coleta</th><th>Valor</th><th>Observações</th><th>Status</th></tr>
+  ${lista.map(p => `<tr><td>#${p.id}</td><td>${e(p.profiles?.nome)}<br><small>${e(p.profiles?.email)}</small></td><td>${e(p.servicos?.nome)}</td><td>${p.quantidade}</td>
+    <td>${dataBR(p.data_coleta)}</td><td>${money(p.valor_estimado)}</td><td>${e(p.observacoes || '—')}</td>
+    <td><div class="inline"><select id="st-${p.id}">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${p.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
+    <button class="btn mini" data-salvar="${p.id}">Salvar</button></div></td></tr>`).join('')}
+  </table></div>`}</div></div>`;
+app.addEventListener('click', async ev => {
+  const id = ev.target.dataset?.salvar; if (!id) return;
+  const { error } = await sb.from('pedidos').update({ status: document.getElementById('st-' + id).value }).eq('id', id);
+  flash(error ? 'Não foi possível atualizar o status.' : 'Status atualizado.', error ? 'err' : 'ok'); location.reload();
+});
+</script>
+</body>
+</html>
