@@ -46,3 +46,10 @@ Seg–sex 8h–17h, sábado 8h–12h, domingo fechado, horários de 1 em 1 hora,
 - `assets/spa.js` — rotas, páginas e acesso ao Supabase
 - `assets/config.js` — URL e chave do Supabase (**não sobrescreva o seu ao atualizar**)
 - Os `.html` antigos (`login.html`, etc.) agora só redirecionam para a rota correta.
+
+## Login com Google
+1. Google Cloud Console → crie um projeto → **APIs e serviços → Tela de permissão OAuth** (tipo Externo) → **Credenciais → Criar credenciais → ID do cliente OAuth** (aplicativo da Web).
+2. Em **URIs de redirecionamento autorizados**, cole `https://SEU-PROJETO.supabase.co/auth/v1/callback`. Em **Origens JavaScript autorizadas**, `https://SEU-SITE.vercel.app`.
+3. Supabase → **Authentication → Sign In / Providers → Google** → ative e cole o Client ID e o Client Secret.
+4. Supabase → **Authentication → URL Configuration**: Site URL e Redirect URLs com o endereço da Vercel.
+5. Rode no SQL Editor o `create or replace function public.handle_new_user()` do `schema.sql` (para pegar o nome da conta Google).

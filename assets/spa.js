@@ -80,6 +80,14 @@ function showFlash() {
 }
 
 /* ============ páginas (views) ============ */
+const GOOGLE_SVG = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
+const GOOGLE = `<button type="button" class="btn-google" id="g">${GOOGLE_SVG}Continuar com o Google</button><div class="ou"><span>ou</span></div>`;
+function ligarGoogle() {
+  $('g').addEventListener('click', async () => {
+    const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + '/' } });
+    if (error) { $('err').textContent = 'Não foi possível entrar com o Google. Tente novamente.'; $('err').hidden = false; }
+  });
+}
 const SIDE = t => `<div class="side"><img src="assets/img/logo.jpg" alt="Logo SpinLav"><h2>Uma rotina mais leve começa aqui.</h2><p style="margin:0">${t}</p></div>`;
 const aviso = (m, href, label) => `<div class="wrap page"><div class="card vazio"><p>${m}</p><a class="btn" href="${href}">${label}</a></div></div>`;
 
@@ -130,11 +138,13 @@ function vLogin({ draw }) {
     <form class="card" id="f"><div class="eyebrow" style="margin:0">Área do cliente</div><h1>Bem-vindo à SpinLav.</h1>
       <p style="margin:0">Entre para solicitar serviços e acompanhar seus pedidos.</p>
       <p class="alert err" id="err" hidden></p>
+      ${GOOGLE}
       <label for="email">E-mail</label><input id="email" type="email" required autocomplete="email">
       <label for="senha">Senha</label><input id="senha" type="password" required autocomplete="current-password">
       <button class="btn fit" type="submit" id="b">Entrar</button>
       <p class="note">Ainda não tem conta? <a href="#cadastro"><strong>Cadastre-se</strong></a></p></form>
     ${SIDE('Cuidado e praticidade com a identidade acolhedora da SpinLav.')}</div>`);
+  ligarGoogle();
   $('f').addEventListener('submit', async ev => {
     ev.preventDefault(); $('b').disabled = true; $('err').hidden = true;
     const { error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('senha').value });
@@ -148,6 +158,7 @@ function vCadastro({ draw }) {
   draw(`<div class="wrap login">
     <form class="card" id="f"><div class="eyebrow" style="margin:0">Novo por aqui</div><h1>Criar conta</h1>
       <p class="alert err" id="err" hidden></p>
+      ${GOOGLE}
       <label for="nome">Nome</label><input id="nome" type="text" required minlength="2">
       <label for="email">E-mail</label><input id="email" type="email" required>
       <label for="senha">Senha</label><input id="senha" type="password" minlength="6" required>
@@ -155,6 +166,7 @@ function vCadastro({ draw }) {
       <button class="btn fit" type="submit" id="b">Cadastrar</button>
       <p class="note">Já tem conta? <a href="#login"><strong>Entrar</strong></a></p></form>
     ${SIDE('Crie sua conta e peça sua coleta em poucos cliques.')}</div>`);
+  ligarGoogle();
   const erro = m => { $('err').textContent = m; $('err').hidden = false; $('b').disabled = false; };
   $('f').addEventListener('submit', async ev => {
     ev.preventDefault(); $('b').disabled = true; $('err').hidden = true;
@@ -331,7 +343,9 @@ async function boot() {
     await sb.auth.getSession();
     await refreshUser();
     if (p.get('error_description')) { flash('O link do e-mail é inválido ou expirou. Entre ou cadastre-se novamente.', 'err'); history.replaceState(null, '', '#login'); }
-    else { flash('E-mail confirmado! Você já pode usar sua conta.'); history.replaceState(null, '', user ? '#servicos' : '#login'); }
+    else if (p.get('type') === 'signup') { flash('E-mail confirmado! Você já pode usar sua conta.'); history.replaceState(null, '', user ? '#servicos' : '#login'); }
+    else if (user) { flash('Olá, ' + user.nome + '! Login feito com sucesso.'); history.replaceState(null, '', user.perfil === 'admin' ? '#admin' : '#servicos'); }
+    else history.replaceState(null, '', '#login');
   } else await refreshUser();
   renderFooter(); addEventListener('hashchange', route); route();
 }
