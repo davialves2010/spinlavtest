@@ -46,7 +46,8 @@ async function refreshUser() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) { user = null; return; }
   const { data: p } = await sb.from('clientes').select('nome,perfil').eq('id', session.user.id).maybeSingle();
-  user = { id: session.user.id, email: session.user.email, nome: p?.nome || session.user.email, perfil: p?.perfil || 'cliente' };
+  user = { id: session.user.id, email: session.user.email, nome: p?.nome || session.user.email, perfil: p?.perfil || 'cliente', dono: false };
+  if (user.perfil === 'admin') { const { data: d } = await sb.rpc('sou_dono'); user.dono = d === true; }
 }
 
 /* ============ horários (DFD 5.0 Consultar Disponibilidade) ============ */
@@ -384,12 +385,59 @@ const salvarStatus = async id => {
   const { error } = await sb.from('pedidos').update({ status: $('st-' + id).value }).eq('id', id);
   flash(error ? 'Não foi possível atualizar o status.' : 'Status atualizado.', error ? 'err' : 'ok'); route();
 };
-const admTabs = a => `<div class="tabs">${[['agenda', 'Agenda do dia'], ['pedidos', 'Todos os pedidos'], ['bloqueios', 'Bloqueios'], ['equipe', 'Equipe']].map(([k, t]) => `<a class="tab${a === k ? ' on' : ''}" href="#admin?aba=${k}">${t}</a>`).join('')}</div>`;
+const admTabs = a => `<div class="tabs">${[['agenda', 'Agenda do dia'], ['pedidos', 'Todos os pedidos'], ['bloqueios', 'Bloqueios'], ...(user.dono ? [['equipe', 'Equipe'], ['registro', 'Registro']] : [])].map(([k, t]) => `<a class="tab${a === k ? ' on' : ''}" href="#admin?aba=${k}">${t}</a>`).join('')}</div>`;
 const admShell = (aba, inner) => `<div class="wrap page"><div class="head"><div class="eyebrow">Administração</div><h1>Painel da lavanderia</h1></div>${admTabs(aba)}<div class="card" id="adm">${inner}</div></div>`;
+
+/* ---------- verificação em duas etapas (app autenticador) ---------- */
+async function mfaGate({ draw, live }) {
+  const { data: lf } = await sb.auth.mfa.listFactors();
+  if (!live()) return;
+  const ativo = (lf?.totp || [])[0];
+  const erro = m => { $('err').textContent = m; $('err').hidden = false; $('b').disabled = false; };
+  const concluir = async () => { await refreshUser(); flash('Verificação concluída. Bem-vindo ao painel!'); route(); };
+  if (ativo) {
+    draw(`<div class="wrap login"><form class="card" id="f"><div class="eyebrow" style="margin:0">Segurança</div><h1>Verificação em duas etapas</h1>
+      <p style="margin:0">Digite o código de 6 dígitos do seu app autenticador para abrir o painel.</p>
+      <p class="alert err" id="err" hidden></p>
+      <label for="cod">Código</label><input id="cod" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+      <button class="btn fit" type="submit" id="b">Verificar</button></form>
+      ${SIDE('O painel da administração exige um segundo passo de segurança.')}</div>`);
+    $('f').addEventListener('submit', async ev => {
+      ev.preventDefault(); $('b').disabled = true; $('err').hidden = true;
+      const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: ativo.id, code: $('cod').value.replace(/\D/g, '') });
+      if (error) return erro('Código incorreto ou expirado. Tente o código atual do app.');
+      concluir();
+    });
+    return;
+  }
+  for (const f of (lf?.all || [])) if (f.status !== 'verified') await sb.auth.mfa.unenroll({ factorId: f.id });
+  const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'SpinLav' });
+  if (!live()) return;
+  if (error || !data) return draw(aviso('Não foi possível ativar a verificação em duas etapas. Confira se o MFA (TOTP) está ativado no Supabase.', '#inicio', 'Voltar ao início'));
+  draw(`<div class="wrap login"><form class="card" id="f"><div class="eyebrow" style="margin:0">Segurança</div><h1>Ative a verificação em duas etapas</h1>
+    <p style="margin:0">Para acessar o painel, cadastre um app autenticador (Google Authenticator, Authy, Microsoft Authenticator…): escaneie o QR Code e digite o código que aparecer.</p>
+    <img class="qr" id="qr" alt="QR Code para o app autenticador" width="200" height="200">
+    <p class="note">Sem câmera? Digite esta chave no app: <span class="cod">${e(data.totp.secret)}</span></p>
+    <p class="alert err" id="err" hidden></p>
+    <label for="cod">Código do app</label><input id="cod" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+    <button class="btn fit" type="submit" id="b">Ativar e entrar</button></form>
+    ${SIDE('Guarde bem o acesso ao app: ele será pedido sempre que você entrar no painel.')}</div>`);
+  $('qr').src = data.totp.qr_code;
+  $('f').addEventListener('submit', async ev => {
+    ev.preventDefault(); $('b').disabled = true; $('err').hidden = true;
+    const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: data.id, code: $('cod').value.replace(/\D/g, '') });
+    if (error) return erro('Código incorreto. Confira o código atual no app e tente de novo.');
+    concluir();
+  });
+}
 
 async function vAdmin({ draw, need, live, params }) {
   if (!need(true)) return;
-  const aba = ['agenda', 'pedidos', 'bloqueios', 'equipe'].includes(params.get('aba')) ? params.get('aba') : 'agenda';
+  const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (!live()) return;
+  if (aal?.currentLevel !== 'aal2') return mfaGate({ draw, live });
+  const aba = ['agenda', 'pedidos', 'bloqueios', 'equipe', 'registro'].includes(params.get('aba')) ? params.get('aba') : 'agenda';
+  if (['equipe', 'registro'].includes(aba) && !user.dono) { flash('Esta área é exclusiva do dono.', 'err'); return go('#admin'); }
 
   /* ----- Agenda do dia ----- */
   if (aba === 'agenda') {
@@ -449,20 +497,21 @@ async function vAdmin({ draw, need, live, params }) {
     return;
   }
 
-  /* ----- Equipe: quem é administrador ----- */
+  /* ----- Equipe: quem é administrador (só o dono) ----- */
   if (aba === 'equipe') {
     const { data, error } = await sb.rpc('listar_clientes');
     if (!live()) return;
-    const l = (data || []).slice().sort((a, b) => (a.perfil === 'admin' ? 0 : 1) - (b.perfil === 'admin' ? 0 : 1) || String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+    const rank = c => c.dono ? 0 : c.perfil === 'admin' ? 1 : 2;
+    const l = (data || []).slice().sort((a, b) => rank(a) - rank(b) || String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
     const tabela = r => `<div class="scroll"><table class="tbl"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th></th></tr></thead><tbody>
       ${r.map(c => `<tr><td data-label="Nome">${e(c.nome)}</td><td data-label="E-mail">${e(c.email)}</td>
-        <td data-label="Perfil"><span class="badge ${c.perfil === 'admin' ? 's-agendado' : 's-cancelado'}">${c.perfil === 'admin' ? 'Administrador' : 'Cliente'}</span></td>
-        <td>${c.id === user.id ? '<small>você</small>' : c.perfil === 'admin'
+        <td data-label="Perfil"><span class="badge ${c.dono ? 's-concluido' : c.perfil === 'admin' ? 's-agendado' : 's-cancelado'}">${c.dono ? 'Dono' : c.perfil === 'admin' ? 'Administrador' : 'Cliente'}</span></td>
+        <td>${c.id === user.id ? '<small>você</small>' : c.dono ? '<small>dono</small>' : c.perfil === 'admin'
           ? `<button class="btn o mini" data-perfil="${c.id}" data-novo="cliente" data-nome="${e(c.nome)}">Remover admin</button>`
           : `<button class="btn mini" data-perfil="${c.id}" data-novo="admin" data-nome="${e(c.nome)}">Tornar admin</button>`}</td></tr>`).join('')}</tbody></table></div>`;
     draw(admShell('equipe', `
-      <p style="margin:0 0 14px">Quem é administrador acessa este painel. A pessoa precisa ter criado uma conta no site antes. Depois de mudar, ela deve sair e entrar de novo.</p>
-      ${error ? '<p class="alert err">Não foi possível carregar a lista. Rode o SQL equipe-admin.sql no Supabase.</p>' : ''}
+      <p style="margin:0 0 14px">Só o dono vê esta aba. A pessoa precisa ter criado uma conta no site antes. Depois de mudar, ela deve sair e entrar de novo. Todas as mudanças ficam no Registro.</p>
+      ${error ? '<p class="alert err">Não foi possível carregar a lista. Rode o SQL seguranca-admin.sql no Supabase.</p>' : ''}
       <div class="filtros"><div><label for="f-q">Buscar por nome ou e-mail</label><input id="f-q" type="text" placeholder="Digite para filtrar"></div></div>
       <div id="lista"></div>`));
     const lista = () => {
@@ -479,6 +528,28 @@ async function vAdmin({ draw, need, live, params }) {
       const { error } = await sb.rpc('definir_perfil', { p_cliente: b.dataset.perfil, p_perfil: b.dataset.novo });
       flash(error ? 'Não foi possível alterar o perfil: ' + error.message : (tornar ? 'Agora essa pessoa é administradora.' : 'Acesso de administrador removido.'), error ? 'err' : 'ok'); route();
     });
+    return;
+  }
+
+  /* ----- Registro de ações (só o dono) ----- */
+  if (aba === 'registro') {
+    const { data, error } = await sb.from('auditoria').select('*').order('quando', { ascending: false }).limit(300);
+    if (!live()) return;
+    const l = data || [];
+    const ACAO = { pedido_status: 'Status de pedido', perfil: 'Acesso / perfil', bloqueio_criado: 'Bloqueio criado', bloqueio_removido: 'Bloqueio removido' };
+    const tabela = r => `<div class="scroll"><table class="tbl"><thead><tr><th>Quando</th><th>Quem</th><th>Ação</th><th>Detalhe</th></tr></thead><tbody>
+      ${r.map(x => `<tr><td data-label="Quando">${e(new Date(x.quando).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }))}</td><td data-label="Quem">${e(x.ator_email)}</td><td data-label="Ação">${e(ACAO[x.acao] || x.acao)}</td><td data-label="Detalhe">${e(x.alvo || '')}${x.detalhe ? ' — ' + e(x.detalhe) : ''}</td></tr>`).join('')}</tbody></table></div>`;
+    draw(admShell('registro', `
+      <p style="margin:0 0 14px">Últimas ações feitas por administradores (até 300). Este registro não pode ser editado nem apagado pelo site.</p>
+      ${error ? '<p class="alert err">Não foi possível carregar o registro. Rode o SQL seguranca-admin.sql no Supabase.</p>' : ''}
+      <div class="filtros"><div><label for="f-q">Filtrar</label><input id="f-q" type="text" placeholder="Pessoa, ação ou pedido"></div></div>
+      <div id="lista"></div>`));
+    const lista = () => {
+      const q = $('f-q').value.trim().toLowerCase();
+      const r = l.filter(x => !q || `${x.ator_email} ${ACAO[x.acao] || x.acao} ${x.alvo} ${x.detalhe}`.toLowerCase().includes(q));
+      $('lista').innerHTML = r.length ? tabela(r) : '<div class="vazio"><p>Nenhum registro.</p></div>';
+    };
+    $('f-q').addEventListener('input', lista); lista();
     return;
   }
 
