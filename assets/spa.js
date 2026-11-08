@@ -384,12 +384,12 @@ const salvarStatus = async id => {
   const { error } = await sb.from('pedidos').update({ status: $('st-' + id).value }).eq('id', id);
   flash(error ? 'Não foi possível atualizar o status.' : 'Status atualizado.', error ? 'err' : 'ok'); route();
 };
-const admTabs = a => `<div class="tabs">${[['agenda', 'Agenda do dia'], ['pedidos', 'Todos os pedidos'], ['bloqueios', 'Bloqueios']].map(([k, t]) => `<a class="tab${a === k ? ' on' : ''}" href="#admin?aba=${k}">${t}</a>`).join('')}</div>`;
+const admTabs = a => `<div class="tabs">${[['agenda', 'Agenda do dia'], ['pedidos', 'Todos os pedidos'], ['bloqueios', 'Bloqueios'], ['equipe', 'Equipe']].map(([k, t]) => `<a class="tab${a === k ? ' on' : ''}" href="#admin?aba=${k}">${t}</a>`).join('')}</div>`;
 const admShell = (aba, inner) => `<div class="wrap page"><div class="head"><div class="eyebrow">Administração</div><h1>Painel da lavanderia</h1></div>${admTabs(aba)}<div class="card" id="adm">${inner}</div></div>`;
 
 async function vAdmin({ draw, need, live, params }) {
   if (!need(true)) return;
-  const aba = ['agenda', 'pedidos', 'bloqueios'].includes(params.get('aba')) ? params.get('aba') : 'agenda';
+  const aba = ['agenda', 'pedidos', 'bloqueios', 'equipe'].includes(params.get('aba')) ? params.get('aba') : 'agenda';
 
   /* ----- Agenda do dia ----- */
   if (aba === 'agenda') {
@@ -446,6 +446,39 @@ async function vAdmin({ draw, need, live, params }) {
     ['f-q', 'f-st', 'f-dt'].forEach(i => $(i).addEventListener('input', lista));
     $('adm').addEventListener('click', ev => { const b = ev.target.closest('[data-salvar]'); if (b) salvarStatus(b.dataset.salvar); });
     lista();
+    return;
+  }
+
+  /* ----- Equipe: quem é administrador ----- */
+  if (aba === 'equipe') {
+    const { data, error } = await sb.rpc('listar_clientes');
+    if (!live()) return;
+    const l = (data || []).slice().sort((a, b) => (a.perfil === 'admin' ? 0 : 1) - (b.perfil === 'admin' ? 0 : 1) || String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+    const tabela = r => `<div class="scroll"><table class="tbl"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th></th></tr></thead><tbody>
+      ${r.map(c => `<tr><td data-label="Nome">${e(c.nome)}</td><td data-label="E-mail">${e(c.email)}</td>
+        <td data-label="Perfil"><span class="badge ${c.perfil === 'admin' ? 's-agendado' : 's-cancelado'}">${c.perfil === 'admin' ? 'Administrador' : 'Cliente'}</span></td>
+        <td>${c.id === user.id ? '<small>você</small>' : c.perfil === 'admin'
+          ? `<button class="btn o mini" data-perfil="${c.id}" data-novo="cliente" data-nome="${e(c.nome)}">Remover admin</button>`
+          : `<button class="btn mini" data-perfil="${c.id}" data-novo="admin" data-nome="${e(c.nome)}">Tornar admin</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+    draw(admShell('equipe', `
+      <p style="margin:0 0 14px">Quem é administrador acessa este painel. A pessoa precisa ter criado uma conta no site antes. Depois de mudar, ela deve sair e entrar de novo.</p>
+      ${error ? '<p class="alert err">Não foi possível carregar a lista. Rode o SQL equipe-admin.sql no Supabase.</p>' : ''}
+      <div class="filtros"><div><label for="f-q">Buscar por nome ou e-mail</label><input id="f-q" type="text" placeholder="Digite para filtrar"></div></div>
+      <div id="lista"></div>`));
+    const lista = () => {
+      const q = $('f-q').value.trim().toLowerCase();
+      const r = l.filter(c => !q || `${c.nome} ${c.email}`.toLowerCase().includes(q));
+      $('lista').innerHTML = r.length ? tabela(r) : '<div class="vazio"><p>Nenhuma conta encontrada.</p></div>';
+    };
+    $('f-q').addEventListener('input', lista); lista();
+    $('lista').addEventListener('click', async ev => {
+      const b = ev.target.closest('[data-perfil]'); if (!b) return;
+      const tornar = b.dataset.novo === 'admin';
+      if (!confirm(tornar ? `Dar acesso de administrador para ${b.dataset.nome}?` : `Remover o acesso de administrador de ${b.dataset.nome}?`)) return;
+      b.disabled = true;
+      const { error } = await sb.rpc('definir_perfil', { p_cliente: b.dataset.perfil, p_perfil: b.dataset.novo });
+      flash(error ? 'Não foi possível alterar o perfil: ' + error.message : (tornar ? 'Agora essa pessoa é administradora.' : 'Acesso de administrador removido.'), error ? 'err' : 'ok'); route();
+    });
     return;
   }
 
