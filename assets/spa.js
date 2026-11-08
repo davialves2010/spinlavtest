@@ -12,6 +12,8 @@ const hoje = () => new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).t
 const STATUS = { pendente: 'Pendente', agendado: 'Agendado', em_andamento: 'Em andamento', concluido: 'Concluído', cancelado: 'Cancelado' };
 const tempoFmt = m => { const h = Math.floor(m / 60), r = m % 60; return h ? `${h}h${r ? ' ' + r + 'min' : ''}` : `${r} min`; };
 const calcTempo = (s, q) => s.tempo_base_min + q * s.tempo_peca_min;
+const fmtCep = c => { const d = String(c || '').replace(/\D/g, '').slice(0, 8); return d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d; };
+const endTxt = a => a?.logradouro ? `${a.logradouro}, ${a.numero}${a.complemento ? ' – ' + a.complemento : ''} – ${a.bairro}, ${a.cidade}/${a.uf}` : '';
 
 const I = {
   wash: '<rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="13" r="4"/><path d="M8 6.5h.01"/>',
@@ -209,19 +211,63 @@ async function vSolicitar({ draw, need, live, params }) {
 async function vAgendar({ draw, need, live, params }) {
   if (!need()) return;
   const id = Number(params.get('pedido') || 0);
-  const { data: p } = await sb.from('pedidos').select('*, servicos(nome)').eq('id', id).eq('cliente_id', user.id).maybeSingle();
+  const [{ data: p }, { data: pf }] = await Promise.all([
+    sb.from('pedidos').select('*, servicos(nome)').eq('id', id).eq('cliente_id', user.id).maybeSingle(),
+    sb.from('clientes').select('cep,logradouro,numero,complemento,bairro,cidade,uf').eq('id', user.id).maybeSingle()
+  ]);
   if (!live()) return;
   if (!p) return draw(aviso('Pedido não encontrado.', '#solicitar', 'Fazer um pedido'));
   if (p.status !== 'pendente') return draw(aviso('Este pedido não está aguardando agendamento.', '#pedidos', 'Ver meus pedidos'));
+  const v = k => e(pf?.[k] || '');
   draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Pedido #${p.id}</div><h1>Agendar data e horário</h1></div>
     <div class="form">${stepper(3)}<form class="card" id="f">
       <div class="resumo"><span>Serviço: <strong>${e(p.servicos.nome)}</strong></span><span>Peças: <strong>${p.quantidade}</strong></span><span>Tempo estimado: <strong>${tempoFmt(p.tempo_estimado_min)}</strong></span><span>Valor: <strong>${money(p.valor_estimado)}</strong></span></div>
       <p class="alert err" id="err" hidden></p>
       <label for="tipo">Tipo de agendamento</label>
       <select id="tipo"><option value="coleta">Coleta em casa</option><option value="balcao">Levar à lavanderia</option></select>
+      <fieldset class="end" id="end" aria-label="Endereço da coleta">
+        <div class="eyebrow" style="margin:0">Endereço da coleta</div>
+        <label for="cep">CEP</label>
+        <input id="cep" type="text" inputmode="numeric" autocomplete="postal-code" maxlength="9" placeholder="00000-000" value="${e(fmtCep(pf?.cep))}">
+        <p class="note" id="cepmsg" hidden></p>
+        <label for="rua">Rua / Avenida</label>
+        <input id="rua" type="text" autocomplete="address-line1" maxlength="120" value="${v('logradouro')}">
+        <div class="duo">
+          <div><label for="num">Número</label><input id="num" type="text" maxlength="10" autocomplete="off" value="${v('numero')}"></div>
+          <div><label for="comp">Complemento</label><input id="comp" type="text" maxlength="60" autocomplete="address-line2" placeholder="Apto, bloco… (opcional)" value="${v('complemento')}"></div>
+        </div>
+        <label for="bai">Bairro</label>
+        <input id="bai" type="text" maxlength="80" value="${v('bairro')}">
+        <div class="duo uf">
+          <div><label for="cid">Cidade</label><input id="cid" type="text" maxlength="80" autocomplete="address-level2" value="${v('cidade')}"></div>
+          <div><label for="uf">UF</label><input id="uf" type="text" maxlength="2" autocomplete="address-level1" style="text-transform:uppercase" value="${v('uf')}"></div>
+        </div>
+      </fieldset>
       <label for="dt">Data</label><input id="dt" type="date" min="${hoje()}" required>
       <label>Horários</label><div id="slots"><p class="note">Escolha uma data para consultar os horários disponíveis.</p></div>
       <button class="btn fit" type="submit" id="b" disabled>Confirmar agendamento</button></form></div></div>`);
+
+  /* endereço: aparece só na coleta em casa */
+  const campos = ['cep', 'rua', 'num', 'bai', 'cid', 'uf'];
+  const modo = () => { const c = $('tipo').value === 'coleta'; $('end').hidden = !c; campos.forEach(k => $(k).required = c); };
+  $('tipo').addEventListener('change', () => { $('err').hidden = true; modo(); });
+  modo();
+  $('cep').addEventListener('input', async () => {
+    const d = $('cep').value.replace(/\D/g, '').slice(0, 8);
+    $('cep').value = fmtCep(d);
+    if (d.length !== 8) { $('cepmsg').hidden = true; return; }
+    const m = $('cepmsg'); m.textContent = 'Buscando endereço…'; m.hidden = false;
+    try {
+      const r = await (await fetch(`https://viacep.com.br/ws/${d}/json/`)).json();
+      if (!live()) return;
+      if (r.erro) { m.textContent = 'CEP não encontrado. Preencha o endereço manualmente.'; return; }
+      if (r.logradouro) $('rua').value = r.logradouro;
+      if (r.bairro) $('bai').value = r.bairro;
+      $('cid').value = r.localidade || ''; $('uf').value = r.uf || '';
+      m.hidden = true; $('num').focus();
+    } catch { if (live()) m.textContent = 'Não foi possível buscar o CEP. Preencha o endereço manualmente.'; }
+  });
+
   let h = '';
   const carregar = async () => {
     h = ''; $('b').disabled = true;
@@ -238,9 +284,19 @@ async function vAgendar({ draw, need, live, params }) {
     $('slots').querySelectorAll('.slot').forEach(x => x.classList.remove('sel')); s.classList.add('sel'); h = s.dataset.h; $('b').disabled = false;
   });
   $('f').addEventListener('submit', async ev => {
-    ev.preventDefault(); if (!h) return; $('b').disabled = true; $('err').hidden = true;
-    const { error } = await sb.from('agendamentos').insert({ pedido_id: p.id, cliente_id: user.id, tipo: $('tipo').value, data_agendada: $('dt').value, horario: h });
+    ev.preventDefault(); if (!h) return; $('err').hidden = true;
+    const col = $('tipo').value === 'coleta';
+    const end = col ? {
+      cep: $('cep').value.replace(/\D/g, ''), logradouro: $('rua').value.trim(), numero: $('num').value.trim(),
+      complemento: $('comp').value.trim() || null, bairro: $('bai').value.trim(), cidade: $('cid').value.trim(), uf: $('uf').value.trim().toUpperCase()
+    } : {};
+    if (col && (end.cep.length !== 8 || !/^[A-Z]{2}$/.test(end.uf))) {
+      $('err').textContent = 'Confira o CEP (8 números) e a UF (2 letras) do endereço.'; $('err').hidden = false; return;
+    }
+    $('b').disabled = true;
+    const { error } = await sb.from('agendamentos').insert({ pedido_id: p.id, cliente_id: user.id, tipo: $('tipo').value, data_agendada: $('dt').value, horario: h, ...end });
     if (error) { $('err').textContent = /lotado/i.test(error.message) ? 'Esse horário acabou de ser preenchido. Escolha outro.' : 'Não foi possível agendar: ' + error.message; $('err').hidden = false; carregar(); return; }
+    if (col) await sb.from('clientes').update(end).eq('id', user.id);   // guarda o endereço no perfil (se não der, o agendamento já está salvo)
     flash(`Agendamento confirmado para ${dataBR($('dt').value)} às ${h}. Obrigado!`); go('#pedidos');
   });
 }
@@ -262,11 +318,17 @@ async function vHorarios({ draw, live }) {
 }
 
 const ag = p => Array.isArray(p.agendamentos) ? p.agendamentos[0] : p.agendamentos;
-const quando = (p, curto) => { const a = ag(p); return a ? `${dataBR(a.data_agendada)} às ${String(a.horario).slice(0, 5)}<br><small>${a.tipo === 'coleta' ? (curto ? 'Coleta' : 'Coleta em casa') : (curto ? 'Balcão' : 'Na lavanderia')}</small>` : '—'; };
+const quando = (p, curto, comEnd) => {
+  const a = ag(p);
+  if (!a) return '—';
+  const end = comEnd && a.tipo === 'coleta' && endTxt(a) ? `<br><small>${e(endTxt(a))}</small>` : '';
+  return `${dataBR(a.data_agendada)} às ${String(a.horario).slice(0, 5)}<br><small>${a.tipo === 'coleta' ? (curto ? 'Coleta' : 'Coleta em casa') : (curto ? 'Balcão' : 'Na lavanderia')}</small>${end}`;
+};
+const AG_COLS = 'data_agendada,horario,tipo,cep,logradouro,numero,complemento,bairro,cidade,uf';
 
 async function vPedidos({ draw, need, live }) {
   if (!need()) return;
-  const { data, error } = await sb.from('pedidos').select('*, servicos(nome), agendamentos(data_agendada,horario,tipo)').eq('cliente_id', user.id).order('criado_em', { ascending: false });
+  const { data, error } = await sb.from('pedidos').select(`*, servicos(nome), agendamentos(${AG_COLS})`).eq('cliente_id', user.id).order('criado_em', { ascending: false });
   if (!live()) return;
   const l = data || [];
   draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Olá, ${e(user.nome)}</div><h1>Meus pedidos</h1></div><div class="card">
@@ -274,7 +336,7 @@ async function vPedidos({ draw, need, live }) {
     ${!l.length ? '<div class="vazio"><p>Você ainda não fez nenhum pedido.</p><a class="btn" href="#solicitar">Solicitar serviço</a></div>' : `
     <div class="scroll"><table class="tbl"><thead><tr><th>Nº</th><th>Serviço</th><th>Peças</th><th>Tempo est.</th><th>Agendamento</th><th>Valor est.</th><th>Status</th><th></th></tr></thead><tbody>
     ${l.map(p => `<tr><td data-label="Pedido">#${p.id}</td><td data-label="Serviço">${e(p.servicos?.nome)}</td><td data-label="Peças">${p.quantidade}</td>
-      <td data-label="Tempo est.">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p)}</td><td data-label="Valor est.">${money(p.valor_estimado)}</td>
+      <td data-label="Tempo est.">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p, false, true)}</td><td data-label="Valor est.">${money(p.valor_estimado)}</td>
       <td data-label="Status"><span class="badge s-${p.status}">${STATUS[p.status]}</span></td>
       <td><div class="acoes">${p.status === 'pendente' ? `<a class="btn mini" href="#agendar?pedido=${p.id}">Agendar</a>` : ''}${['pendente', 'agendado'].includes(p.status) ? `<button class="btn o mini" data-cancelar="${p.id}">Cancelar</button>` : ''}</div></td></tr>`).join('')}
     </tbody></table></div><div><a class="btn" href="#solicitar">Novo pedido</a></div>`}</div></div>`);
@@ -287,7 +349,7 @@ async function vPedidos({ draw, need, live }) {
 
 async function vAdmin({ draw, need, live }) {
   if (!need(true)) return;
-  const { data, error } = await sb.from('pedidos').select('*, servicos(nome), clientes(nome,email), agendamentos(data_agendada,horario,tipo)').order('criado_em', { ascending: false });
+  const { data, error } = await sb.from('pedidos').select(`*, servicos(nome), clientes(nome,email), agendamentos(${AG_COLS})`).order('criado_em', { ascending: false });
   if (!live()) return;
   const l = data || [];
   draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Administração</div><h1>Pedidos dos clientes</h1></div><div class="card">
@@ -295,7 +357,7 @@ async function vAdmin({ draw, need, live }) {
     ${!l.length ? '<div class="vazio"><p>Nenhum pedido recebido ainda.</p></div>' : `
     <div class="scroll"><table class="tbl"><thead><tr><th>Nº</th><th>Cliente</th><th>Serviço</th><th>Peças</th><th>Tempo</th><th>Agendamento</th><th>Valor</th><th>Obs.</th><th>Status</th></tr></thead><tbody>
     ${l.map(p => `<tr><td data-label="Pedido">#${p.id}</td><td data-label="Cliente">${e(p.clientes?.nome)}<br><small>${e(p.clientes?.email)}</small></td><td data-label="Serviço">${e(p.servicos?.nome)}</td><td data-label="Peças">${p.quantidade}</td>
-      <td data-label="Tempo">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p, true)}</td><td data-label="Valor">${money(p.valor_estimado)}</td><td data-label="Obs.">${e(p.observacoes || '—')}</td>
+      <td data-label="Tempo">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p, true, true)}</td><td data-label="Valor">${money(p.valor_estimado)}</td><td data-label="Obs.">${e(p.observacoes || '—')}</td>
       <td data-label="Status"><div class="inline"><select id="st-${p.id}">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${p.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <button class="btn mini" data-salvar="${p.id}">Salvar</button></div></td></tr>`).join('')}
     </tbody></table></div>`}</div></div>`);

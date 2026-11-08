@@ -1,3 +1,4 @@
+
 :root{--ink:#10284a;--txt:#2f4358;--brand:#1c3d73;--brand-d:#122c55;--acc:#2a62b0;--mint:#dbe9f8;--pale:#eef5fc;--card:#fff;--line:#d3e3f0;--foot:#10284a;--shadow:0 6px 22px rgba(16,40,74,.10);--hdr:#fff;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#eaf3fc;--txt:#c9d9e8;--brand:#3f74c4;--brand-d:#5a8ad4;--acc:#8bb8f2;--mint:#1c3354;--pale:#0f1c2e;--card:#16263b;--line:#27405c;--foot:#0a1424;--shadow:0 6px 22px rgba(0,0,0,.35);--hdr:#0f1c2e;color-scheme:dark}}
@@ -156,3 +157,10 @@ input[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:1
 /* modo escuro: etapa concluída com texto escuro (acento agora é azul claro) */
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .steps li.done b{color:#0f1c2e}}
 :root[data-theme="dark"] .steps li.done b{color:#0f1c2e}
+
+/* ===== endereço da coleta ===== */
+.end{border:0;padding:0;margin:0;min-width:0;display:flex;flex-direction:column;gap:12px}
+.end[hidden]{display:none}
+.end .duo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.end .duo.uf{grid-template-columns:minmax(0,1fr) 84px}
+.end .duo>div{display:flex;flex-direction:column;gap:6px;min-width:0}
