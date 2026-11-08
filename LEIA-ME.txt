@@ -1,0 +1,9 @@
+SpinLav - pagamento + frete
+
+1) Supabase > SQL Editor: cole e rode supabase/pagamento-frete.sql
+2) Copie estes arquivos para a RAIZ do seu projeto (mesma pasta do index.html):
+   - aplicar-patch.py
+   - supabase/pagamento-frete.sql
+3) Na raiz do projeto rode:  python3 aplicar-patch.py   (altera assets/spa.js e cria assets/spa.js.bak)
+4) git add . && git commit -m "Pagamento e frete" && git push
+5) Supabase > Table Editor > zonas_frete: cadastre suas cidades/bairros e valores.
