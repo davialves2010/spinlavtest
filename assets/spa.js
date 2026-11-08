@@ -17,7 +17,9 @@ const WHATSAPP_LAVANDERIA = '';   // WhatsApp da lavanderia com DDI+DDD, ex.: '5
 const soNum = s => String(s || '').replace(/\D/g, '');
 const fmtTel = t => { const d = soNum(t).slice(0, 11); if (d.length <= 2) return d; if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`; if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`; return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`; };
 const waLink = (tel, msg) => { let d = soNum(tel); if (!d) return ''; if (d.length <= 11) d = '55' + d; return `https://wa.me/${d}?text=${encodeURIComponent(msg)}`; };
-const AG_COLS = 'data_agendada,horario,tipo,telefone,cep,logradouro,numero,complemento,bairro,cidade,uf';
+const AG_COLS = 'data_agendada,horario,tipo,telefone,cep,logradouro,numero,complemento,bairro,cidade,uf,forma_pagamento,frete';
+const PAGTO = { pix: 'Pix', cartao: 'Cartão (maquininha)', dinheiro: 'Dinheiro' };
+const PIX_CHAVE = '';   // chave Pix da lavanderia (vazio = não mostra no aviso de confirmação)
 const endTxt = a => a?.logradouro ? `${a.logradouro}, ${a.numero}${a.complemento ? ' – ' + a.complemento : ''} – ${a.bairro}, ${a.cidade}/${a.uf}` : '';
 
 const I = {
@@ -256,6 +258,10 @@ async function vAgendar({ draw, need, live, params }) {
           <div><label for="uf">UF</label><input id="uf" type="text" maxlength="2" autocomplete="address-level1" style="text-transform:uppercase" value="${v('uf')}"></div>
         </div>
       </fieldset>
+      <label for="pg">Forma de pagamento</label>
+      <select id="pg">${Object.entries(PAGTO).map(([k, t]) => `<option value="${k}" ${(src.forma_pagamento || 'pix') === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <p class="note">O pagamento é feito na entrega ou na retirada das peças, na forma escolhida.</p>
+      <div class="resumo" id="fr" hidden></div>
       <label for="dt">${re ? 'Nova data' : 'Data'}</label><input id="dt" type="date" min="${hoje()}" required>
       <label>Horários</label><div id="slots"><p class="note">Escolha uma data para consultar os horários disponíveis.</p></div>
       <button class="btn fit" type="submit" id="b" disabled>${re ? 'Confirmar novo horário' : 'Confirmar agendamento'}</button></form></div></div>`);
@@ -263,7 +269,23 @@ async function vAgendar({ draw, need, live, params }) {
   /* endereço: aparece só na coleta em casa */
   const campos = ['cep', 'rua', 'num', 'bai', 'cid', 'uf'];
   const modo = () => { const c = $('tipo').value === 'coleta'; $('end').hidden = !c; campos.forEach(k => $(k).required = c); };
-  $('tipo').addEventListener('change', () => { $('err').hidden = true; modo(); });
+  /* frete: calculado pelo banco (rpc calcular_frete) conforme cidade/bairro */
+  const base = Number(p.valor_estimado) || 0; let foraArea = false, tFrete, nFrete = 0;
+  const calcFrete = async () => {
+    const fr = $('fr'), my = ++nFrete;
+    if ($('tipo').value !== 'coleta') { foraArea = false; fr.innerHTML = `<span>Frete: <strong>Grátis (você leva à lavanderia)</strong></span><span>Total estimado: <strong>${money(base)}</strong></span>`; fr.hidden = false; return; }
+    const cid = $('cid').value.trim(), uf = $('uf').value.trim().toUpperCase();
+    if (!cid || uf.length !== 2) { foraArea = false; fr.hidden = true; return; }
+    const { data, error } = await sb.rpc('calcular_frete', { p_cidade: cid, p_uf: uf, p_bairro: $('bai').value.trim() });
+    if (!live() || my !== nFrete) return;
+    if (error || data == null) { foraArea = true; fr.innerHTML = '<span>Ainda não entregamos neste endereço. Escolha “Levar à lavanderia” ou outro endereço.</span>'; }
+    else { foraArea = false; const f = Number(data); fr.innerHTML = `<span>Frete: <strong>${f ? money(f) : 'Grátis'}</strong></span><span>Total estimado: <strong>${money(base + f)}</strong></span>`; }
+    fr.hidden = false;
+  };
+  const deb = () => { clearTimeout(tFrete); tFrete = setTimeout(calcFrete, 400); };
+  ['cid', 'uf', 'bai'].forEach(k => $(k).addEventListener('input', deb));
+  $('tipo').addEventListener('change', () => { $('err').hidden = true; modo(); calcFrete(); });
+  calcFrete();
   modo();
   $('tel').addEventListener('input', () => { $('tel').value = fmtTel($('tel').value); });
   $('cep').addEventListener('input', async () => {
@@ -278,7 +300,7 @@ async function vAgendar({ draw, need, live, params }) {
       if (r.logradouro) $('rua').value = r.logradouro;
       if (r.bairro) $('bai').value = r.bairro;
       $('cid').value = r.localidade || ''; $('uf').value = r.uf || '';
-      m.hidden = true; $('num').focus();
+      m.hidden = true; calcFrete(); $('num').focus();
     } catch { if (live()) m.textContent = 'Não foi possível buscar o CEP. Preencha o endereço manualmente.'; }
   });
 
@@ -308,13 +330,15 @@ async function vAgendar({ draw, need, live, params }) {
       complemento: $('comp').value.trim() || null, bairro: $('bai').value.trim(), cidade: $('cid').value.trim(), uf: $('uf').value.trim().toUpperCase()
     } : {};
     if (col && (end.cep.length !== 8 || !/^[A-Z]{2}$/.test(end.uf))) return falha('Confira o CEP (8 números) e a UF (2 letras) do endereço.');
+    if (col && foraArea) return falha('Ainda não entregamos neste endereço. Escolha “Levar à lavanderia” ou outro endereço.');
     $('b').disabled = true;
     const { error } = re
       ? await sb.rpc('reagendar_pedido', { p_pedido: p.id, p_data: $('dt').value, p_horario: h, p_tipo: $('tipo').value, p_dados: { ...end, telefone: tel } })
-      : await sb.from('agendamentos').insert({ pedido_id: p.id, cliente_id: user.id, tipo: $('tipo').value, data_agendada: $('dt').value, horario: h, telefone: tel, ...end });
+      : await sb.from('agendamentos').insert({ pedido_id: p.id, cliente_id: user.id, tipo: $('tipo').value, data_agendada: $('dt').value, horario: h, telefone: tel, forma_pagamento: $('pg').value, ...end });
     if (error) { falha(/lotado|indispon/i.test(error.message) ? 'Esse horário não está mais disponível. Escolha outro.' : (re ? 'Não foi possível reagendar: ' : 'Não foi possível agendar: ') + error.message); carregar(); return; }
+    if (re) await sb.from('agendamentos').update({ forma_pagamento: $('pg').value }).eq('pedido_id', p.id);   // reagendamento: atualiza a forma de pagamento
     await sb.from('clientes').update({ ...end, telefone: tel }).eq('id', user.id);   // guarda no perfil (se não der, o agendamento já está salvo)
-    flash(re ? `Pedido reagendado para ${dataBR($('dt').value)} às ${h}.` : `Agendamento confirmado para ${dataBR($('dt').value)} às ${h}. Obrigado!`); go('#pedidos');
+    flash(re ? `Pedido reagendado para ${dataBR($('dt').value)} às ${h}.` : `Agendamento confirmado para ${dataBR($('dt').value)} às ${h}. Obrigado!${$('pg').value === 'pix' && PIX_CHAVE ? ' Chave Pix: ' + PIX_CHAVE + '.' : ''}`); go('#pedidos');
   });
 }
 
@@ -335,6 +359,7 @@ async function vHorarios({ draw, live }) {
 }
 
 const ag = p => Array.isArray(p.agendamentos) ? p.agendamentos[0] : p.agendamentos;
+const totalTxt = p => { const a = ag(p), f = Number(a?.frete || 0); return `${money(Number(p.valor_estimado) + f)}${a ? `<br><small>${f ? 'com frete ' + money(f) : 'sem frete'} · ${PAGTO[a.forma_pagamento] || '—'}</small>` : ''}`; };
 const quando = (p, curto, comEnd) => {
   const a = ag(p);
   if (!a) return '—';
@@ -352,7 +377,7 @@ async function vPedidos({ draw, need, live }) {
     ${!l.length ? '<div class="vazio"><p>Você ainda não fez nenhum pedido.</p><a class="btn" href="#solicitar">Solicitar serviço</a></div>' : `
     <div class="scroll"><table class="tbl"><thead><tr><th>Nº</th><th>Serviço</th><th>Peças</th><th>Tempo est.</th><th>Agendamento</th><th>Valor est.</th><th>Status</th><th></th></tr></thead><tbody>
     ${l.map(p => `<tr><td data-label="Pedido">#${p.id}</td><td data-label="Serviço">${e(p.servicos?.nome)}</td><td data-label="Peças">${p.quantidade}</td>
-      <td data-label="Tempo est.">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p, false, true)}</td><td data-label="Valor est.">${money(p.valor_estimado)}</td>
+      <td data-label="Tempo est.">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p, false, true)}</td><td data-label="Valor est.">${totalTxt(p)}</td>
       <td data-label="Status"><span class="badge s-${p.status}">${STATUS[p.status]}</span></td>
       <td><div class="acoes">${p.status === 'pendente' ? `<a class="btn mini" href="#agendar?pedido=${p.id}">Agendar</a>` : ''}${p.status === 'agendado' ? `<a class="btn mini" href="#agendar?pedido=${p.id}&reagendar=1">Reagendar</a>` : ''}${['pendente', 'agendado'].includes(p.status) ? `<button class="btn o mini" data-cancelar="${p.id}">Cancelar</button>` : ''}</div></td></tr>`).join('')}
     </tbody></table></div><div><a class="btn" href="#solicitar">Novo pedido</a></div>`}</div></div>`);
@@ -477,7 +502,7 @@ async function vAdmin({ draw, need, live, params }) {
     const l = data || [];
     const tabela = r => `<div class="scroll"><table class="tbl"><thead><tr><th>Nº</th><th>Cliente</th><th>Serviço</th><th>Peças</th><th>Agendamento</th><th>Valor</th><th>Obs.</th><th>Status</th><th></th></tr></thead><tbody>
       ${r.map(p => `<tr><td data-label="Pedido">#${p.id}</td><td data-label="Cliente">${e(p.clientes?.nome)}<br><small>${e(p.clientes?.email)}</small></td><td data-label="Serviço">${e(p.servicos?.nome)}</td><td data-label="Peças">${p.quantidade}</td>
-        <td data-label="Agendamento">${quando(p, true, true)}</td><td data-label="Valor">${money(p.valor_estimado)}</td><td data-label="Obs.">${e(p.observacoes || '—')}</td>
+        <td data-label="Agendamento">${quando(p, true, true)}</td><td data-label="Valor">${totalTxt(p)}</td><td data-label="Obs.">${e(p.observacoes || '—')}</td>
         <td data-label="Status"><div class="inline">${statusSel(p)}</div></td><td>${zapBtn(p, ag(p))}</td></tr>`).join('')}</tbody></table></div>`;
     draw(admShell('pedidos', `${error ? '<p class="alert err">Não foi possível carregar os pedidos.</p>' : ''}
       <div class="filtros">
