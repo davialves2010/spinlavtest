@@ -1,7 +1,7 @@
 :root{--ink:#10284a;--txt:#2f4358;--brand:#1c3d73;--brand-d:#122c55;--acc:#1f6b4f;--mint:#e0f4ea;--pale:#eef5fc;--card:#fff;--line:#d3e3f0;--foot:#10284a;--shadow:0 6px 22px rgba(16,40,74,.10);--hdr:#fff;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#eaf3fc;--txt:#c9d9e8;--brand:#3f74c4;--brand-d:#5a8ad4;--acc:#7fd1ab;--mint:#173a33;--pale:#0f1c2e;--card:#16263b;--line:#27405c;--foot:#0a1424;--shadow:0 6px 22px rgba(0,0,0,.35);--hdr:#0f1c2e;color-scheme:dark}}
-:root[data-theme="dark"]{--ink:#eaf3fc;--txt:#c9d9e8;--brand:#3f74c4;--brand-d:#5a8ad4;--acc:#7fd1ab;--mint:#173a33;--pale:#0f1c2e;--card:#16263b;--line:#27405c;--foot:#0a1424;--shadow:0 6px 22px rgba(0,0,0,.35);--hdr:#0f1c2e;color-scheme:dark}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#eaf3fc;--txt:#c9d9e8;--brand:#3f74c4;--brand-d:#5a8ad4;--acc:#8bb8f2;--mint:#1c3354;--pale:#0f1c2e;--card:#16263b;--line:#27405c;--foot:#0a1424;--shadow:0 6px 22px rgba(0,0,0,.35);--hdr:#0f1c2e;color-scheme:dark}}
+:root[data-theme="dark"]{--ink:#eaf3fc;--txt:#c9d9e8;--brand:#3f74c4;--brand-d:#5a8ad4;--acc:#8bb8f2;--mint:#1c3354;--pale:#0f1c2e;--card:#16263b;--line:#27405c;--foot:#0a1424;--shadow:0 6px 22px rgba(0,0,0,.35);--hdr:#0f1c2e;color-scheme:dark}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
 body{margin:0;font-family:'DM Sans',system-ui,sans-serif;font-size:17px;line-height:1.6;color:var(--txt);background:var(--pale);min-height:100vh;display:flex;flex-direction:column}
@@ -152,3 +152,7 @@ input[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:1
 @media(max-width:960px){.hero .wrap,.about .wrap,.login{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:640px){.g3,.g4{grid-template-columns:minmax(0,1fr)}.slots{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:380px){.slots{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* modo escuro: etapa concluída com texto escuro (acento agora é azul claro) */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .steps li.done b{color:#0f1c2e}}
+:root[data-theme="dark"] .steps li.done b{color:#0f1c2e}
