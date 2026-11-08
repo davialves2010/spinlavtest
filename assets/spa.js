@@ -13,6 +13,11 @@ const STATUS = { pendente: 'Pendente', agendado: 'Agendado', em_andamento: 'Em a
 const tempoFmt = m => { const h = Math.floor(m / 60), r = m % 60; return h ? `${h}h${r ? ' ' + r + 'min' : ''}` : `${r} min`; };
 const calcTempo = (s, q) => s.tempo_base_min + q * s.tempo_peca_min;
 const fmtCep = c => { const d = String(c || '').replace(/\D/g, '').slice(0, 8); return d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d; };
+const WHATSAPP_LAVANDERIA = '';   // WhatsApp da lavanderia com DDI+DDD, ex.: '5511999999999' (vazio = não mostra o link)
+const soNum = s => String(s || '').replace(/\D/g, '');
+const fmtTel = t => { const d = soNum(t).slice(0, 11); if (d.length <= 2) return d; if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`; if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`; return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`; };
+const waLink = (tel, msg) => { let d = soNum(tel); if (!d) return ''; if (d.length <= 11) d = '55' + d; return `https://wa.me/${d}?text=${encodeURIComponent(msg)}`; };
+const AG_COLS = 'data_agendada,horario,tipo,telefone,cep,logradouro,numero,complemento,bairro,cidade,uf';
 const endTxt = a => a?.logradouro ? `${a.logradouro}, ${a.numero}${a.complemento ? ' – ' + a.complemento : ''} – ${a.bairro}, ${a.cidade}/${a.uf}` : '';
 
 const I = {
@@ -74,7 +79,7 @@ function renderHeader(key = '') {
   });
 }
 function renderFooter() {
-  $('ftr').innerHTML = `<div class="wrap bar"><div><div class="logo">SpinLav</div><p>Cuidado e praticidade para uma rotina mais leve.</p></div><nav><a href="#inicio">Início</a><a href="#servicos">Serviços</a><a href="#sobre">Sobre Nós</a></nav></div>`;
+  $('ftr').innerHTML = `<div class="wrap bar"><div><div class="logo">SpinLav</div><p>Cuidado e praticidade para uma rotina mais leve.</p></div><nav><a href="#inicio">Início</a><a href="#servicos">Serviços</a><a href="#sobre">Sobre Nós</a>${WHATSAPP_LAVANDERIA ? `<a href="https://wa.me/${soNum(WHATSAPP_LAVANDERIA)}" target="_blank" rel="noopener">WhatsApp</a>` : ''}</nav></div>`;
 }
 function showFlash() {
   const f = pendingFlash; pendingFlash = null;
@@ -211,24 +216,31 @@ async function vSolicitar({ draw, need, live, params }) {
 async function vAgendar({ draw, need, live, params }) {
   if (!need()) return;
   const id = Number(params.get('pedido') || 0);
-  const [{ data: p }, { data: pf }] = await Promise.all([
+  const re = params.get('reagendar') === '1';
+  const [{ data: p }, { data: pf }, { data: cur }] = await Promise.all([
     sb.from('pedidos').select('*, servicos(nome)').eq('id', id).eq('cliente_id', user.id).maybeSingle(),
-    sb.from('clientes').select('cep,logradouro,numero,complemento,bairro,cidade,uf').eq('id', user.id).maybeSingle()
+    sb.from('clientes').select('cep,logradouro,numero,complemento,bairro,cidade,uf,telefone').eq('id', user.id).maybeSingle(),
+    re ? sb.from('agendamentos').select(AG_COLS).eq('pedido_id', id).maybeSingle() : Promise.resolve({ data: null })
   ]);
   if (!live()) return;
   if (!p) return draw(aviso('Pedido não encontrado.', '#solicitar', 'Fazer um pedido'));
-  if (p.status !== 'pendente') return draw(aviso('Este pedido não está aguardando agendamento.', '#pedidos', 'Ver meus pedidos'));
-  const v = k => e(pf?.[k] || '');
-  draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Pedido #${p.id}</div><h1>Agendar data e horário</h1></div>
-    <div class="form">${stepper(3)}<form class="card" id="f">
+  if (p.status !== (re ? 'agendado' : 'pendente')) return draw(aviso(re ? 'Este pedido não pode mais ser reagendado.' : 'Este pedido não está aguardando agendamento.', '#pedidos', 'Ver meus pedidos'));
+  const src = { ...(pf || {}), ...Object.fromEntries(Object.entries(cur || {}).filter(([, x]) => x != null)) };
+  const tipo0 = cur?.tipo || 'coleta';
+  const v = k => e(src[k] || '');
+  draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Pedido #${p.id}</div><h1>${re ? 'Reagendar pedido' : 'Agendar data e horário'}</h1></div>
+    <div class="form">${re ? '' : stepper(3)}<form class="card" id="f">
       <div class="resumo"><span>Serviço: <strong>${e(p.servicos.nome)}</strong></span><span>Peças: <strong>${p.quantidade}</strong></span><span>Tempo estimado: <strong>${tempoFmt(p.tempo_estimado_min)}</strong></span><span>Valor: <strong>${money(p.valor_estimado)}</strong></span></div>
+      ${re && cur ? `<p class="note">Agendamento atual: <strong>${dataBR(cur.data_agendada)} às ${String(cur.horario).slice(0, 5)}</strong>. Escolha o novo dia e horário abaixo.</p>` : ''}
       <p class="alert err" id="err" hidden></p>
       <label for="tipo">Tipo de agendamento</label>
-      <select id="tipo"><option value="coleta">Coleta em casa</option><option value="balcao">Levar à lavanderia</option></select>
+      <select id="tipo"><option value="coleta" ${tipo0 === 'coleta' ? 'selected' : ''}>Coleta em casa</option><option value="balcao" ${tipo0 === 'balcao' ? 'selected' : ''}>Levar à lavanderia</option></select>
+      <label for="tel">WhatsApp para contato</label>
+      <input id="tel" type="tel" inputmode="tel" autocomplete="tel" maxlength="15" placeholder="(11) 90000-0000" required value="${e(fmtTel(src.telefone))}">
       <fieldset class="end" id="end" aria-label="Endereço da coleta">
         <div class="eyebrow" style="margin:0">Endereço da coleta</div>
         <label for="cep">CEP</label>
-        <input id="cep" type="text" inputmode="numeric" autocomplete="postal-code" maxlength="9" placeholder="00000-000" value="${e(fmtCep(pf?.cep))}">
+        <input id="cep" type="text" inputmode="numeric" autocomplete="postal-code" maxlength="9" placeholder="00000-000" value="${e(fmtCep(src.cep))}">
         <p class="note" id="cepmsg" hidden></p>
         <label for="rua">Rua / Avenida</label>
         <input id="rua" type="text" autocomplete="address-line1" maxlength="120" value="${v('logradouro')}">
@@ -243,15 +255,16 @@ async function vAgendar({ draw, need, live, params }) {
           <div><label for="uf">UF</label><input id="uf" type="text" maxlength="2" autocomplete="address-level1" style="text-transform:uppercase" value="${v('uf')}"></div>
         </div>
       </fieldset>
-      <label for="dt">Data</label><input id="dt" type="date" min="${hoje()}" required>
+      <label for="dt">${re ? 'Nova data' : 'Data'}</label><input id="dt" type="date" min="${hoje()}" required>
       <label>Horários</label><div id="slots"><p class="note">Escolha uma data para consultar os horários disponíveis.</p></div>
-      <button class="btn fit" type="submit" id="b" disabled>Confirmar agendamento</button></form></div></div>`);
+      <button class="btn fit" type="submit" id="b" disabled>${re ? 'Confirmar novo horário' : 'Confirmar agendamento'}</button></form></div></div>`);
 
   /* endereço: aparece só na coleta em casa */
   const campos = ['cep', 'rua', 'num', 'bai', 'cid', 'uf'];
   const modo = () => { const c = $('tipo').value === 'coleta'; $('end').hidden = !c; campos.forEach(k => $(k).required = c); };
   $('tipo').addEventListener('change', () => { $('err').hidden = true; modo(); });
   modo();
+  $('tel').addEventListener('input', () => { $('tel').value = fmtTel($('tel').value); });
   $('cep').addEventListener('input', async () => {
     const d = $('cep').value.replace(/\D/g, '').slice(0, 8);
     $('cep').value = fmtCep(d);
@@ -283,21 +296,24 @@ async function vAgendar({ draw, need, live, params }) {
     const s = ev.target.closest('.slot'); if (!s || s.disabled) return;
     $('slots').querySelectorAll('.slot').forEach(x => x.classList.remove('sel')); s.classList.add('sel'); h = s.dataset.h; $('b').disabled = false;
   });
+  const falha = m => { $('err').textContent = m; $('err').hidden = false; };
   $('f').addEventListener('submit', async ev => {
     ev.preventDefault(); if (!h) return; $('err').hidden = true;
     const col = $('tipo').value === 'coleta';
+    const tel = soNum($('tel').value);
+    if (tel.length < 10 || tel.length > 11) return falha('Informe o WhatsApp com DDD, por exemplo (11) 90000-0000.');
     const end = col ? {
       cep: $('cep').value.replace(/\D/g, ''), logradouro: $('rua').value.trim(), numero: $('num').value.trim(),
       complemento: $('comp').value.trim() || null, bairro: $('bai').value.trim(), cidade: $('cid').value.trim(), uf: $('uf').value.trim().toUpperCase()
     } : {};
-    if (col && (end.cep.length !== 8 || !/^[A-Z]{2}$/.test(end.uf))) {
-      $('err').textContent = 'Confira o CEP (8 números) e a UF (2 letras) do endereço.'; $('err').hidden = false; return;
-    }
+    if (col && (end.cep.length !== 8 || !/^[A-Z]{2}$/.test(end.uf))) return falha('Confira o CEP (8 números) e a UF (2 letras) do endereço.');
     $('b').disabled = true;
-    const { error } = await sb.from('agendamentos').insert({ pedido_id: p.id, cliente_id: user.id, tipo: $('tipo').value, data_agendada: $('dt').value, horario: h, ...end });
-    if (error) { $('err').textContent = /lotado/i.test(error.message) ? 'Esse horário acabou de ser preenchido. Escolha outro.' : 'Não foi possível agendar: ' + error.message; $('err').hidden = false; carregar(); return; }
-    if (col) await sb.from('clientes').update(end).eq('id', user.id);   // guarda o endereço no perfil (se não der, o agendamento já está salvo)
-    flash(`Agendamento confirmado para ${dataBR($('dt').value)} às ${h}. Obrigado!`); go('#pedidos');
+    const { error } = re
+      ? await sb.rpc('reagendar_pedido', { p_pedido: p.id, p_data: $('dt').value, p_horario: h, p_tipo: $('tipo').value, p_dados: { ...end, telefone: tel } })
+      : await sb.from('agendamentos').insert({ pedido_id: p.id, cliente_id: user.id, tipo: $('tipo').value, data_agendada: $('dt').value, horario: h, telefone: tel, ...end });
+    if (error) { falha(/lotado|indispon/i.test(error.message) ? 'Esse horário não está mais disponível. Escolha outro.' : (re ? 'Não foi possível reagendar: ' : 'Não foi possível agendar: ') + error.message); carregar(); return; }
+    await sb.from('clientes').update({ ...end, telefone: tel }).eq('id', user.id);   // guarda no perfil (se não der, o agendamento já está salvo)
+    flash(re ? `Pedido reagendado para ${dataBR($('dt').value)} às ${h}.` : `Agendamento confirmado para ${dataBR($('dt').value)} às ${h}. Obrigado!`); go('#pedidos');
   });
 }
 
@@ -324,7 +340,6 @@ const quando = (p, curto, comEnd) => {
   const end = comEnd && a.tipo === 'coleta' && endTxt(a) ? `<br><small>${e(endTxt(a))}</small>` : '';
   return `${dataBR(a.data_agendada)} às ${String(a.horario).slice(0, 5)}<br><small>${a.tipo === 'coleta' ? (curto ? 'Coleta' : 'Coleta em casa') : (curto ? 'Balcão' : 'Na lavanderia')}</small>${end}`;
 };
-const AG_COLS = 'data_agendada,horario,tipo,cep,logradouro,numero,complemento,bairro,cidade,uf';
 
 async function vPedidos({ draw, need, live }) {
   if (!need()) return;
@@ -338,7 +353,7 @@ async function vPedidos({ draw, need, live }) {
     ${l.map(p => `<tr><td data-label="Pedido">#${p.id}</td><td data-label="Serviço">${e(p.servicos?.nome)}</td><td data-label="Peças">${p.quantidade}</td>
       <td data-label="Tempo est.">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p, false, true)}</td><td data-label="Valor est.">${money(p.valor_estimado)}</td>
       <td data-label="Status"><span class="badge s-${p.status}">${STATUS[p.status]}</span></td>
-      <td><div class="acoes">${p.status === 'pendente' ? `<a class="btn mini" href="#agendar?pedido=${p.id}">Agendar</a>` : ''}${['pendente', 'agendado'].includes(p.status) ? `<button class="btn o mini" data-cancelar="${p.id}">Cancelar</button>` : ''}</div></td></tr>`).join('')}
+      <td><div class="acoes">${p.status === 'pendente' ? `<a class="btn mini" href="#agendar?pedido=${p.id}">Agendar</a>` : ''}${p.status === 'agendado' ? `<a class="btn mini" href="#agendar?pedido=${p.id}&reagendar=1">Reagendar</a>` : ''}${['pendente', 'agendado'].includes(p.status) ? `<button class="btn o mini" data-cancelar="${p.id}">Cancelar</button>` : ''}</div></td></tr>`).join('')}
     </tbody></table></div><div><a class="btn" href="#solicitar">Novo pedido</a></div>`}</div></div>`);
   app.querySelectorAll('[data-cancelar]').forEach(btn => btn.addEventListener('click', async () => {
     if (!confirm('Cancelar este pedido? O horário agendado será liberado.')) return;
@@ -347,24 +362,120 @@ async function vPedidos({ draw, need, live }) {
   }));
 }
 
-async function vAdmin({ draw, need, live }) {
+/* ---------- administração ---------- */
+const zapMsg = (p, a) => {
+  const n = String(p.clientes?.nome || '').split(' ')[0];
+  const hh = a ? String(a.horario).slice(0, 5) : '';
+  const m = {
+    pendente: 'Precisamos confirmar o agendamento do seu pedido.',
+    agendado: a ? `Confirmamos o ${a.tipo === 'coleta' ? 'recolhimento das suas peças' : 'seu atendimento'} em ${dataBR(a.data_agendada)} às ${hh}.` : 'Seu pedido está agendado.',
+    em_andamento: 'Suas peças já estão sendo cuidadas por aqui.',
+    concluido: a?.tipo === 'coleta' ? 'Seu pedido está pronto! Vamos combinar o melhor horário para a entrega?' : 'Seu pedido está pronto para retirada na lavanderia!',
+    cancelado: 'Seu pedido foi cancelado.'
+  };
+  return `Olá${n ? ', ' + n : ''}! Aqui é da SpinLav, sobre o seu pedido #${p.id}. ${m[p.status] || ''}`;
+};
+const zapBtn = (p, a) => {
+  const l = waLink(a?.telefone || p.clientes?.telefone, zapMsg(p, a));
+  return l ? `<a class="btn zap mini" href="${e(l)}" target="_blank" rel="noopener">WhatsApp</a>` : '<small>sem telefone</small>';
+};
+const statusSel = p => `<select id="st-${p.id}" aria-label="Status do pedido ${p.id}">${Object.entries(STATUS).map(([k, t]) => `<option value="${k}" ${p.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn mini" data-salvar="${p.id}">Salvar</button>`;
+const salvarStatus = async id => {
+  const { error } = await sb.from('pedidos').update({ status: $('st-' + id).value }).eq('id', id);
+  flash(error ? 'Não foi possível atualizar o status.' : 'Status atualizado.', error ? 'err' : 'ok'); route();
+};
+const admTabs = a => `<div class="tabs">${[['agenda', 'Agenda do dia'], ['pedidos', 'Todos os pedidos'], ['bloqueios', 'Bloqueios']].map(([k, t]) => `<a class="tab${a === k ? ' on' : ''}" href="#admin?aba=${k}">${t}</a>`).join('')}</div>`;
+const admShell = (aba, inner) => `<div class="wrap page"><div class="head"><div class="eyebrow">Administração</div><h1>Painel da lavanderia</h1></div>${admTabs(aba)}<div class="card" id="adm">${inner}</div></div>`;
+
+async function vAdmin({ draw, need, live, params }) {
   if (!need(true)) return;
-  const { data, error } = await sb.from('pedidos').select(`*, servicos(nome), clientes(nome,email), agendamentos(${AG_COLS})`).order('criado_em', { ascending: false });
+  const aba = ['agenda', 'pedidos', 'bloqueios'].includes(params.get('aba')) ? params.get('aba') : 'agenda';
+
+  /* ----- Agenda do dia ----- */
+  if (aba === 'agenda') {
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(params.get('data') || '') ? params.get('data') : hoje();
+    const soma = n => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    const [{ data: agd, error }, { data: bl }] = await Promise.all([
+      sb.from('agendamentos').select(`${AG_COLS}, pedidos(id,status,quantidade,observacoes,servicos(nome),clientes(nome,email,telefone))`).eq('data_agendada', d).order('horario'),
+      sb.from('bloqueios').select('*').eq('data', d)
+    ]);
+    if (!live()) return;
+    const itens = (agd || []).filter(x => x.pedidos && x.pedidos.status !== 'cancelado');
+    const dia = new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
+    draw(admShell('agenda', `
+      <div class="diabar"><a class="btn o mini" href="#admin?aba=agenda&data=${soma(-1)}">← Dia anterior</a>
+        <input id="dia" type="date" value="${d}" aria-label="Escolher dia"><a class="btn o mini" href="#admin?aba=agenda&data=${soma(1)}">Próximo dia →</a>
+        ${d !== hoje() ? `<a class="btn mini" href="#admin?aba=agenda">Hoje</a>` : ''}</div>
+      <h2 style="font-size:20px;text-transform:capitalize;margin-bottom:4px">${e(dia)}</h2>
+      <p style="margin:0 0 14px">${itens.length} agendamento(s) neste dia.</p>
+      ${error ? '<p class="alert err">Não foi possível carregar a agenda.</p>' : ''}
+      ${(bl || []).map(b => `<p class="bloq">Bloqueado: ${b.horario ? String(b.horario).slice(0, 5) : 'dia inteiro'}${b.motivo ? ' — ' + e(b.motivo) : ''}</p>`).join('')}
+      ${itens.length ? itens.map(x => { const p = x.pedidos; return `<div class="agi"><div class="hr">${String(x.horario).slice(0, 5)}</div><div class="info">
+        <strong>${e(p.clientes?.nome)} <small>· pedido #${p.id}</small></strong>
+        <span>${e(p.servicos?.nome)} · ${p.quantidade} peça(s)</span>
+        <span>${x.tipo === 'coleta' ? 'Coleta em casa' + (endTxt(x) ? ' — ' + e(endTxt(x)) : '') : 'Cliente leva à lavanderia'}</span>
+        ${p.observacoes ? `<small>Obs.: ${e(p.observacoes)}</small>` : ''}
+        <div class="acts"><span class="badge s-${p.status}">${STATUS[p.status]}</span>${statusSel(p)}${zapBtn(p, x)}</div></div></div>`; }).join('')
+        : '<div class="vazio"><p>Nenhum agendamento neste dia.</p></div>'}`));
+    $('dia').addEventListener('change', () => { if ($('dia').value) go('#admin?aba=agenda&data=' + $('dia').value); });
+    $('adm').addEventListener('click', ev => { const b = ev.target.closest('[data-salvar]'); if (b) salvarStatus(b.dataset.salvar); });
+    return;
+  }
+
+  /* ----- Todos os pedidos (com filtros) ----- */
+  if (aba === 'pedidos') {
+    const { data, error } = await sb.from('pedidos').select(`*, servicos(nome), clientes(nome,email,telefone), agendamentos(${AG_COLS})`).order('criado_em', { ascending: false });
+    if (!live()) return;
+    const l = data || [];
+    const tabela = r => `<div class="scroll"><table class="tbl"><thead><tr><th>Nº</th><th>Cliente</th><th>Serviço</th><th>Peças</th><th>Agendamento</th><th>Valor</th><th>Obs.</th><th>Status</th><th></th></tr></thead><tbody>
+      ${r.map(p => `<tr><td data-label="Pedido">#${p.id}</td><td data-label="Cliente">${e(p.clientes?.nome)}<br><small>${e(p.clientes?.email)}</small></td><td data-label="Serviço">${e(p.servicos?.nome)}</td><td data-label="Peças">${p.quantidade}</td>
+        <td data-label="Agendamento">${quando(p, true, true)}</td><td data-label="Valor">${money(p.valor_estimado)}</td><td data-label="Obs.">${e(p.observacoes || '—')}</td>
+        <td data-label="Status"><div class="inline">${statusSel(p)}</div></td><td>${zapBtn(p, ag(p))}</td></tr>`).join('')}</tbody></table></div>`;
+    draw(admShell('pedidos', `${error ? '<p class="alert err">Não foi possível carregar os pedidos.</p>' : ''}
+      <div class="filtros">
+        <div><label for="f-q">Buscar cliente ou nº</label><input id="f-q" type="text" placeholder="Nome, e-mail ou número"></div>
+        <div><label for="f-st">Status</label><select id="f-st"><option value="">Todos</option>${Object.entries(STATUS).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select></div>
+        <div><label for="f-dt">Data do agendamento</label><input id="f-dt" type="date"></div>
+      </div><p id="cont" style="margin:0 0 10px"></p><div id="lista"></div>`));
+    const lista = () => {
+      const s = $('f-st').value, dt = $('f-dt').value, q = $('f-q').value.trim().toLowerCase();
+      const r = l.filter(p => (!s || p.status === s) && (!dt || ag(p)?.data_agendada === dt) && (!q || `${p.clientes?.nome} ${p.clientes?.email} ${p.id}`.toLowerCase().includes(q)));
+      $('cont').textContent = `${r.length} de ${l.length} pedido(s)`;
+      $('lista').innerHTML = r.length ? tabela(r) : '<div class="vazio"><p>Nenhum pedido encontrado.</p></div>';
+    };
+    ['f-q', 'f-st', 'f-dt'].forEach(i => $(i).addEventListener('input', lista));
+    $('adm').addEventListener('click', ev => { const b = ev.target.closest('[data-salvar]'); if (b) salvarStatus(b.dataset.salvar); });
+    lista();
+    return;
+  }
+
+  /* ----- Bloqueios de datas e horários ----- */
+  const { data: bl, error } = await sb.from('bloqueios').select('*').gte('data', hoje()).order('data').order('horario', { nullsFirst: true });
   if (!live()) return;
-  const l = data || [];
-  draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Administração</div><h1>Pedidos dos clientes</h1></div><div class="card">
-    ${error ? '<p class="alert err">Não foi possível carregar os pedidos.</p>' : ''}
-    ${!l.length ? '<div class="vazio"><p>Nenhum pedido recebido ainda.</p></div>' : `
-    <div class="scroll"><table class="tbl"><thead><tr><th>Nº</th><th>Cliente</th><th>Serviço</th><th>Peças</th><th>Tempo</th><th>Agendamento</th><th>Valor</th><th>Obs.</th><th>Status</th></tr></thead><tbody>
-    ${l.map(p => `<tr><td data-label="Pedido">#${p.id}</td><td data-label="Cliente">${e(p.clientes?.nome)}<br><small>${e(p.clientes?.email)}</small></td><td data-label="Serviço">${e(p.servicos?.nome)}</td><td data-label="Peças">${p.quantidade}</td>
-      <td data-label="Tempo">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p, true, true)}</td><td data-label="Valor">${money(p.valor_estimado)}</td><td data-label="Obs.">${e(p.observacoes || '—')}</td>
-      <td data-label="Status"><div class="inline"><select id="st-${p.id}">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${p.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
-      <button class="btn mini" data-salvar="${p.id}">Salvar</button></div></td></tr>`).join('')}
-    </tbody></table></div>`}</div></div>`);
-  app.querySelectorAll('[data-salvar]').forEach(btn => btn.addEventListener('click', async () => {
-    const { error } = await sb.from('pedidos').update({ status: $('st-' + btn.dataset.salvar).value }).eq('id', btn.dataset.salvar);
-    flash(error ? 'Não foi possível atualizar o status.' : 'Status atualizado.', error ? 'err' : 'ok'); route();
-  }));
+  draw(admShell('bloqueios', `
+    <p style="margin:0 0 14px">Bloqueie feriados, folgas ou horários específicos. Os clientes verão esses horários como indisponíveis. Agendamentos já feitos não são cancelados automaticamente: avise os clientes.</p>
+    ${error ? '<p class="alert err">Não foi possível carregar os bloqueios. Rode o SQL de administração no Supabase (admin-e-seguranca.sql).</p>' : ''}
+    <p class="alert err" id="err" hidden></p>
+    <form id="fb" class="filtros">
+      <div><label for="b-dt">Data</label><input id="b-dt" type="date" min="${hoje()}" required></div>
+      <div><label for="b-h">Horário</label><select id="b-h"><option value="">Dia inteiro</option>${HORARIOS.map(h => `<option value="${h}">${h}</option>`).join('')}</select></div>
+      <div><label for="b-m">Motivo (opcional)</label><input id="b-m" type="text" maxlength="80" placeholder="Feriado, folga…"></div>
+      <div style="justify-content:flex-end"><button class="btn" type="submit" id="b-ok">Bloquear</button></div>
+    </form>
+    ${(bl || []).length ? `<div class="scroll"><table class="tbl"><thead><tr><th>Data</th><th>Horário</th><th>Motivo</th><th></th></tr></thead><tbody>
+      ${bl.map(b => `<tr><td data-label="Data">${dataBR(b.data)}</td><td data-label="Horário">${b.horario ? String(b.horario).slice(0, 5) : 'Dia inteiro'}</td><td data-label="Motivo">${e(b.motivo || '—')}</td><td><button class="btn o mini" data-del="${b.id}">Remover</button></td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="vazio"><p>Nenhum bloqueio futuro.</p></div>'}`));
+  $('fb').addEventListener('submit', async ev => {
+    ev.preventDefault(); $('b-ok').disabled = true; $('err').hidden = true;
+    const { error } = await sb.from('bloqueios').insert({ data: $('b-dt').value, horario: $('b-h').value || null, motivo: $('b-m').value.trim() || null });
+    if (error) { $('err').textContent = /duplicate|unique/i.test(error.message) ? 'Esse bloqueio já existe.' : 'Não foi possível bloquear: ' + error.message; $('err').hidden = false; $('b-ok').disabled = false; return; }
+    flash('Bloqueio adicionado.'); route();
+  });
+  $('adm').addEventListener('click', async ev => {
+    const b = ev.target.closest('[data-del]'); if (!b) return;
+    const { error } = await sb.from('bloqueios').delete().eq('id', b.dataset.del);
+    flash(error ? 'Não foi possível remover o bloqueio.' : 'Bloqueio removido.', error ? 'err' : 'ok'); route();
+  });
 }
 
 /* ============ roteador (troca de página instantânea, sem recarregar) ============ */

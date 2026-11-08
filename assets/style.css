@@ -164,3 +164,23 @@ input[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:1
 .end .duo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 .end .duo.uf{grid-template-columns:minmax(0,1fr) 84px}
 .end .duo>div{display:flex;flex-direction:column;gap:6px;min-width:0}
+
+/* ===== painel do administrador ===== */
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.tab{padding:9px 16px;border-radius:99px;border:2px solid var(--line);background:var(--card);color:var(--ink);text-decoration:none;font:600 14px 'Poppins',sans-serif}
+.tab:hover{border-color:var(--brand)}
+.tab.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.filtros{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.filtros>div{display:flex;flex-direction:column;gap:6px;min-width:0}
+.diabar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.diabar input{width:auto}
+.agi{display:grid;grid-template-columns:70px minmax(0,1fr);gap:6px 16px;padding:16px 0;border-top:1px solid var(--line)}
+.agi:first-of-type{border-top:0}
+.agi .hr{font:600 20px 'Poppins',sans-serif;color:var(--ink)}
+.agi .info{display:flex;flex-direction:column;gap:4px;min-width:0}
+.agi .acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.agi .acts select,.inline select{width:auto;padding:8px 10px}
+.bloq{background:#fff3d6;color:#7a5200;border-radius:10px;padding:10px 14px;font-size:15px;margin:0 0 8px}
+.btn.zap{background:#1f8f4e;border-color:#1f8f4e;color:#fff}
+.btn.zap:hover{background:#17703d;border-color:#17703d}
+@media(max-width:640px){.agi{grid-template-columns:1fr}.diabar .btn{flex:1;text-align:center}}
