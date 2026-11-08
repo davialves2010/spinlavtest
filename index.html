@@ -6,6 +6,7 @@
 <meta name="description" content="SpinLav — lavanderia profissional. Suas roupas limpas, sua rotina mais leve.">
 <title>SpinLav — lavanderia profissional</title>
 
+<script>try{var p=JSON.parse(localStorage.getItem('spinlav:prefs')||'{}'),r=document.documentElement;if(p.tema==='claro')r.dataset.theme='light';else if(p.tema==='escuro')r.dataset.theme='dark';if(p.contraste)r.dataset.contrast='alto';if(p.reduzir)r.dataset.motion='off';if(p.texto)r.style.setProperty('--cfg-zoom',p.texto)}catch(e){}</script>
 <!-- PWA -->
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#1c3d73">
@@ -32,5 +33,6 @@
 <noscript><p style="padding:24px">Ative o JavaScript para usar o site da SpinLav.</p></noscript>
 <script type="module" src="assets/spa.js"></script>
 <script src="assets/pwa.js" defer></script>
+<script src="assets/settings.js" defer></script>
 </body>
 </html>

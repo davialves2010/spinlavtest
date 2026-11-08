@@ -2,7 +2,7 @@
    - Arquivos do site: rede primeiro (sempre pega a versão nova), cache como reserva offline.
    - Fontes e supabase-js (CDN): cache com atualização em segundo plano.
    - Supabase (API/login): nunca passa pelo cache. */
-const VERSION = 'spinlav-v1';
+const VERSION = 'spinlav-v2';
 const SHELL = [
   '/',
   '/index.html',
@@ -12,6 +12,8 @@ const SHELL = [
   '/assets/img/logo.jpg',
   '/assets/img/toalhas.svg',
   '/assets/img/sobre.jpg',
+  '/assets/pwa.js',
+  '/assets/settings.js',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png',
   '/manifest.webmanifest'
