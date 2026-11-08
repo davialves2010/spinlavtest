@@ -276,7 +276,7 @@ async function vAgendar({ draw, need, live, params }) {
     if ($('tipo').value !== 'coleta') { foraArea = false; fr.innerHTML = `<span>Frete: <strong>Grátis (você leva à lavanderia)</strong></span><span>Total estimado: <strong>${money(base)}</strong></span>`; fr.hidden = false; return; }
     const cid = $('cid').value.trim(), uf = $('uf').value.trim().toUpperCase();
     if (!cid || uf.length !== 2) { foraArea = false; fr.hidden = true; return; }
-    const { data, error } = await sb.rpc('calcular_frete', { p_cidade: cid, p_uf: uf, p_bairro: $('bai').value.trim() });
+    const { data, error } = await sb.rpc('calcular_frete', { p_cidade: cid, p_uf: uf, p_bairro: $('bai').value.trim(), p_valor: base });
     if (!live() || my !== nFrete) return;
     if (error || data == null) { foraArea = true; fr.innerHTML = '<span>Ainda não entregamos neste endereço. Escolha “Levar à lavanderia” ou outro endereço.</span>'; }
     else { foraArea = false; const f = Number(data); fr.innerHTML = `<span>Frete: <strong>${f ? money(f) : 'Grátis'}</strong></span><span>Total estimado: <strong>${money(base + f)}</strong></span>`; }
@@ -359,7 +359,7 @@ async function vHorarios({ draw, live }) {
 }
 
 const ag = p => Array.isArray(p.agendamentos) ? p.agendamentos[0] : p.agendamentos;
-const totalTxt = p => { const a = ag(p), f = Number(a?.frete || 0); return `${money(Number(p.valor_estimado) + f)}${a ? `<br><small>${f ? 'com frete ' + money(f) : 'sem frete'} · ${PAGTO[a.forma_pagamento] || '—'}</small>` : ''}`; };
+const totalTxt = p => { const a = ag(p), f = Number(a?.frete || 0); return `${money(Number(p.valor_estimado) + f)}${a ? `<br><small>${f ? 'com frete ' + money(f) : 'sem frete'} · ${PAGTO[a.forma_pagamento] || '—'}${p.pago ? ' · pago ✓' : ''}</small>` : ''}`; };
 const quando = (p, curto, comEnd) => {
   const a = ag(p);
   if (!a) return '—';
@@ -379,8 +379,14 @@ async function vPedidos({ draw, need, live }) {
     ${l.map(p => `<tr><td data-label="Pedido">#${p.id}</td><td data-label="Serviço">${e(p.servicos?.nome)}</td><td data-label="Peças">${p.quantidade}</td>
       <td data-label="Tempo est.">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p, false, true)}</td><td data-label="Valor est.">${totalTxt(p)}</td>
       <td data-label="Status"><span class="badge s-${p.status}">${STATUS[p.status]}</span></td>
-      <td><div class="acoes">${p.status === 'pendente' ? `<a class="btn mini" href="#agendar?pedido=${p.id}">Agendar</a>` : ''}${p.status === 'agendado' ? `<a class="btn mini" href="#agendar?pedido=${p.id}&reagendar=1">Reagendar</a>` : ''}${['pendente', 'agendado'].includes(p.status) ? `<button class="btn o mini" data-cancelar="${p.id}">Cancelar</button>` : ''}</div></td></tr>`).join('')}
+      <td><div class="acoes">${p.status === 'pendente' ? `<a class="btn mini" href="#agendar?pedido=${p.id}">Agendar</a>` : ''}${p.status === 'agendado' && !p.pago ? `<button class="btn zap mini" data-pagar="${p.id}">Pagar agora</button>` : ''}${p.status === 'agendado' ? `<a class="btn mini" href="#agendar?pedido=${p.id}&reagendar=1">Reagendar</a>` : ''}${['pendente', 'agendado'].includes(p.status) ? `<button class="btn o mini" data-cancelar="${p.id}">Cancelar</button>` : ''}</div></td></tr>`).join('')}
     </tbody></table></div><div><a class="btn" href="#solicitar">Novo pedido</a></div>`}</div></div>`);
+  app.querySelectorAll('[data-pagar]').forEach(btn => btn.addEventListener('click', async () => {
+    const t = btn.textContent; btn.disabled = true; btn.textContent = 'Abrindo…';
+    const { data, error } = await sb.functions.invoke('criar-pagamento', { body: { pedido_id: Number(btn.dataset.pagar) } });
+    if (error || !data?.url) { flash('Não foi possível abrir o pagamento online agora. Você pode pagar na entrega ou na retirada.', 'err'); route(); return; }
+    location.href = data.url;
+  }));
   app.querySelectorAll('[data-cancelar]').forEach(btn => btn.addEventListener('click', async () => {
     if (!confirm('Cancelar este pedido? O horário agendado será liberado.')) return;
     const { error } = await sb.from('pedidos').update({ status: 'cancelado' }).eq('id', btn.dataset.cancelar).in('status', ['pendente', 'agendado']);
@@ -405,12 +411,19 @@ const zapBtn = (p, a) => {
   const l = waLink(a?.telefone || p.clientes?.telefone, zapMsg(p, a));
   return l ? `<a class="btn zap mini" href="${e(l)}" target="_blank" rel="noopener">WhatsApp</a>` : '<small>sem telefone</small>';
 };
-const statusSel = p => `<select id="st-${p.id}" aria-label="Status do pedido ${p.id}">${Object.entries(STATUS).map(([k, t]) => `<option value="${k}" ${p.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn mini" data-salvar="${p.id}">Salvar</button>`;
+const statusSel = p => `<select id="st-${p.id}" aria-label="Status do pedido ${p.id}">${Object.entries(STATUS).map(([k, t]) => `<option value="${k}" ${p.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn mini" data-salvar="${p.id}">Salvar</button><button class="btn o mini" data-pago="${p.id}" data-v="${p.pago ? 0 : 1}">${p.pago ? 'Desfazer pago' : 'Marcar pago'}</button>`;
 const salvarStatus = async id => {
   const { error } = await sb.from('pedidos').update({ status: $('st-' + id).value }).eq('id', id);
   flash(error ? 'Não foi possível atualizar o status.' : 'Status atualizado.', error ? 'err' : 'ok'); route();
 };
-const admTabs = a => `<div class="tabs">${[['agenda', 'Agenda do dia'], ['pedidos', 'Todos os pedidos'], ['bloqueios', 'Bloqueios'], ...(user.dono ? [['equipe', 'Equipe'], ['registro', 'Registro']] : [])].map(([k, t]) => `<a class="tab${a === k ? ' on' : ''}" href="#admin?aba=${k}">${t}</a>`).join('')}</div>`;
+const admClick = async ev => {
+  const s = ev.target.closest('[data-salvar]'); if (s) return salvarStatus(s.dataset.salvar);
+  const g = ev.target.closest('[data-pago]'); if (!g) return;
+  g.disabled = true;
+  const { error } = await sb.rpc('marcar_pago', { p_pedido: Number(g.dataset.pago), p_pago: g.dataset.v === '1' });
+  flash(error ? 'Não foi possível atualizar o pagamento.' : 'Pagamento atualizado.', error ? 'err' : 'ok'); route();
+};
+const admTabs = a => `<div class="tabs">${[['agenda', 'Agenda do dia'], ['pedidos', 'Todos os pedidos'], ['bloqueios', 'Bloqueios'], ['frete', 'Frete'], ...(user.dono ? [['equipe', 'Equipe'], ['registro', 'Registro']] : [])].map(([k, t]) => `<a class="tab${a === k ? ' on' : ''}" href="#admin?aba=${k}">${t}</a>`).join('')}</div>`;
 const admShell = (aba, inner) => `<div class="wrap page"><div class="head"><div class="eyebrow">Administração</div><h1>Painel da lavanderia</h1></div>${admTabs(aba)}<div class="card" id="adm">${inner}</div></div>`;
 
 /* ---------- verificação em duas etapas (app autenticador) ---------- */
@@ -461,7 +474,7 @@ async function vAdmin({ draw, need, live, params }) {
   const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
   if (!live()) return;
   if (aal?.currentLevel !== 'aal2') return mfaGate({ draw, live });
-  const aba = ['agenda', 'pedidos', 'bloqueios', 'equipe', 'registro'].includes(params.get('aba')) ? params.get('aba') : 'agenda';
+  const aba = ['agenda', 'pedidos', 'bloqueios', 'frete', 'equipe', 'registro'].includes(params.get('aba')) ? params.get('aba') : 'agenda';
   if (['equipe', 'registro'].includes(aba) && !user.dono) { flash('Esta área é exclusiva do dono.', 'err'); return go('#admin'); }
 
   /* ----- Agenda do dia ----- */
@@ -469,7 +482,7 @@ async function vAdmin({ draw, need, live, params }) {
     const d = /^\d{4}-\d{2}-\d{2}$/.test(params.get('data') || '') ? params.get('data') : hoje();
     const soma = n => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
     const [{ data: agd, error }, { data: bl }] = await Promise.all([
-      sb.from('agendamentos').select(`${AG_COLS}, pedidos(id,status,quantidade,observacoes,servicos(nome),clientes(nome,email,telefone))`).eq('data_agendada', d).order('horario'),
+      sb.from('agendamentos').select(`${AG_COLS}, pedidos(id,status,pago,quantidade,observacoes,servicos(nome),clientes(nome,email,telefone))`).eq('data_agendada', d).order('horario'),
       sb.from('bloqueios').select('*').eq('data', d)
     ]);
     if (!live()) return;
@@ -491,7 +504,7 @@ async function vAdmin({ draw, need, live, params }) {
         <div class="acts"><span class="badge s-${p.status}">${STATUS[p.status]}</span>${statusSel(p)}${zapBtn(p, x)}</div></div></div>`; }).join('')
         : '<div class="vazio"><p>Nenhum agendamento neste dia.</p></div>'}`));
     $('dia').addEventListener('change', () => { if ($('dia').value) go('#admin?aba=agenda&data=' + $('dia').value); });
-    $('adm').addEventListener('click', ev => { const b = ev.target.closest('[data-salvar]'); if (b) salvarStatus(b.dataset.salvar); });
+    $('adm').addEventListener('click', admClick);
     return;
   }
 
@@ -517,7 +530,7 @@ async function vAdmin({ draw, need, live, params }) {
       $('lista').innerHTML = r.length ? tabela(r) : '<div class="vazio"><p>Nenhum pedido encontrado.</p></div>';
     };
     ['f-q', 'f-st', 'f-dt'].forEach(i => $(i).addEventListener('input', lista));
-    $('adm').addEventListener('click', ev => { const b = ev.target.closest('[data-salvar]'); if (b) salvarStatus(b.dataset.salvar); });
+    $('adm').addEventListener('click', admClick);
     lista();
     return;
   }
@@ -575,6 +588,54 @@ async function vAdmin({ draw, need, live, params }) {
       $('lista').innerHTML = r.length ? tabela(r) : '<div class="vazio"><p>Nenhum registro.</p></div>';
     };
     $('f-q').addEventListener('input', lista); lista();
+    return;
+  }
+
+  /* ----- Frete: zonas de entrega e valores ----- */
+  if (aba === 'frete') {
+    const { data, error } = await sb.from('zonas_frete').select('*').order('uf').order('cidade').order('bairro', { nullsFirst: true });
+    if (!live()) return;
+    const l = data || [];
+    const num = v => String(v).trim() === '' ? null : Number(String(v).replace(',', '.'));
+    draw(admShell('frete', `
+      <p style="margin:0 0 14px">Cadastre onde você faz coleta/entrega e quanto cobra. O valor de um <strong>bairro</strong> vale mais que o da <strong>cidade</strong>. Valor 0 = frete grátis. “Grátis acima de” zera o frete quando o valor das peças do pedido chega a esse valor. Cidades não cadastradas ficam sem coleta em casa.</p>
+      ${error ? '<p class="alert err">Não foi possível carregar as zonas. Rode o SQL frete-admin-pagamento.sql no Supabase.</p>' : ''}
+      <p class="alert err" id="err" hidden></p>
+      <form id="fz" class="filtros">
+        <div><label for="z-c">Cidade</label><input id="z-c" type="text" maxlength="80" required></div>
+        <div><label for="z-u">UF</label><input id="z-u" type="text" maxlength="2" required style="text-transform:uppercase"></div>
+        <div><label for="z-b">Bairro (opcional)</label><input id="z-b" type="text" maxlength="80"></div>
+        <div><label for="z-v">Frete (R$)</label><input id="z-v" type="number" min="0" step="0.01" required></div>
+        <div><label for="z-g">Grátis acima de (R$)</label><input id="z-g" type="number" min="0.01" step="0.01"></div>
+        <div style="justify-content:flex-end"><button class="btn" type="submit" id="z-ok">Adicionar</button></div>
+      </form>
+      ${l.length ? `<div class="scroll"><table class="tbl"><thead><tr><th>Cidade</th><th>Bairro</th><th>Frete (R$)</th><th>Grátis acima de</th><th>Ativo</th><th></th></tr></thead><tbody>
+        ${l.map(z => `<tr><td data-label="Cidade">${e(z.cidade)}/${e(z.uf)}</td><td data-label="Bairro">${e(z.bairro || 'Cidade toda')}</td>
+          <td data-label="Frete (R$)"><input id="v-${z.id}" type="number" min="0" step="0.01" value="${z.valor}" style="max-width:120px"></td>
+          <td data-label="Grátis acima de"><input id="g-${z.id}" type="number" min="0.01" step="0.01" value="${z.frete_gratis_acima ?? ''}" placeholder="—" style="max-width:120px"></td>
+          <td data-label="Ativo"><input id="a-${z.id}" type="checkbox" ${z.ativo ? 'checked' : ''} aria-label="Ativo"></td>
+          <td><div class="acoes"><button class="btn mini" data-zsalvar="${z.id}">Salvar</button><button class="btn o mini" data-zdel="${z.id}">Remover</button></div></td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="vazio"><p>Nenhuma zona cadastrada. Sem zonas, a coleta em casa fica indisponível.</p></div>'}`));
+    $('fz').addEventListener('submit', async ev => {
+      ev.preventDefault(); $('z-ok').disabled = true; $('err').hidden = true;
+      const uf = $('z-u').value.trim().toUpperCase();
+      const falha = m => { $('err').textContent = m; $('err').hidden = false; $('z-ok').disabled = false; };
+      if (!/^[A-Z]{2}$/.test(uf)) return falha('A UF precisa ter 2 letras (ex.: SP).');
+      const { error } = await sb.from('zonas_frete').insert({ cidade: $('z-c').value.trim(), uf, bairro: $('z-b').value.trim() || null, valor: num($('z-v').value), frete_gratis_acima: num($('z-g').value) });
+      if (error) return falha(/duplicate|unique/i.test(error.message) ? 'Essa cidade/bairro já está cadastrada.' : 'Não foi possível adicionar: ' + error.message);
+      flash('Zona de frete adicionada.'); route();
+    });
+    $('adm').addEventListener('click', async ev => {
+      const sv = ev.target.closest('[data-zsalvar]'), dl = ev.target.closest('[data-zdel]');
+      if (sv) {
+        const i = sv.dataset.zsalvar; sv.disabled = true;
+        const { error } = await sb.from('zonas_frete').update({ valor: num($('v-' + i).value), frete_gratis_acima: num($('g-' + i).value), ativo: $('a-' + i).checked }).eq('id', i);
+        flash(error ? 'Não foi possível salvar.' : 'Frete atualizado.', error ? 'err' : 'ok'); route();
+      } else if (dl && confirm('Remover esta zona de frete?')) {
+        const { error } = await sb.from('zonas_frete').delete().eq('id', dl.dataset.zdel);
+        flash(error ? 'Não foi possível remover.' : 'Zona removida.', error ? 'err' : 'ok'); route();
+      }
+    });
     return;
   }
 
