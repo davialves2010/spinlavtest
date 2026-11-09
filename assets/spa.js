@@ -33,11 +33,13 @@ const I = {
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>'
 };
+const ICONES_SERVICO = { wash: 'Máquina de lavar', dry: 'Secagem', iron: 'Passadoria', shirt: 'Camisa' };
 const card = (ic, t, d, href, label = 'Saiba mais') =>
   `<article class="card"><div class="ico"><svg viewBox="0 0 24 24">${I[ic] || I.wash}</svg></div><h3>${e(t)}</h3><p>${e(d)}</p>${href ? `<a class="btn sm" href="${e(href)}">${e(label)}</a>` : ''}</article>`;
 const stepper = n => `<ol class="steps">${['Cadastro', 'Pedido', 'Agendamento', 'Confirmação'].map((t, i) => `<li class="${i + 1 < n ? 'done' : i + 1 === n ? 'on' : ''}"><b>${i + 1 < n ? '✓' : i + 1}</b>${t}</li>`).join('')}</ol>`;
 
 /* ============ estado (carregado uma vez, sem recarregar a página) ============ */
+// Perfis: 'cliente' (usa o site), 'admin' (= FUNCIONÁRIO da lavanderia) e dono (funcionário + gestão da equipe).
 let user = null, pendingFlash = null, servicosP = null;
 const flash = (m, t = 'ok') => { pendingFlash = [m, t]; };
 const go = h => { if (location.hash === h) route(); else location.hash = h; };
@@ -52,7 +54,7 @@ async function refreshUser() {
   if (user.perfil === 'admin') { const { data: d } = await sb.rpc('sou_dono'); user.dono = d === true; }
 }
 
-/* ============ horários (DFD 5.0 Consultar Disponibilidade) ============ */
+/* ============ horários (DFD 4.0 Consultar Disponibilidade) ============ */
 const HORARIOS = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
 async function horarios(d) {
   const dow = new Date(d + 'T12:00:00').getDay();
@@ -188,6 +190,7 @@ function vCadastro({ draw }) {
   });
 }
 
+/* DFD 2.0 Registrar Pedidos — regra do projeto: cada pedido tem UM serviço (tipo de lavagem) e uma quantidade de peças */
 async function vSolicitar({ draw, need, live, params }) {
   if (!need()) return;
   const servicos = await getServicos(); if (!live()) return;
@@ -200,7 +203,7 @@ async function vSolicitar({ draw, need, live, params }) {
       <label for="qtd">Quantidade de peças</label><input id="qtd" type="number" min="1" max="200" value="1" required>
       <label for="obs">Observações (opcional)</label><textarea id="obs" maxlength="500"></textarea>
       <div class="resumo" id="prev" hidden></div>
-      <p class="note">O valor final é confirmado pela lavanderia após a conferência das peças. No próximo passo você escolhe data e horário.</p>
+      <p class="note">Cada pedido tem um tipo de lavagem. Para lavar outras peças com um serviço diferente, faça um novo pedido. O valor final é confirmado pela lavanderia após a conferência das peças. No próximo passo você escolhe data e horário.</p>
       <button class="btn fit" type="submit" id="b">Registrar pedido e agendar</button></form></div></div>`);
   const calc = () => {
     const s = servicos.find(x => x.id === Number($('serv').value)), q = Number($('qtd').value) || 0, p = $('prev');
@@ -216,6 +219,7 @@ async function vSolicitar({ draw, need, live, params }) {
   });
 }
 
+/* DFD 5.0 Realizar Agendamentos — a duração (tempo_base + peças × tempo_por_peça) é calculada aqui, junto da escolha do horário */
 async function vAgendar({ draw, need, live, params }) {
   if (!need()) return;
   const id = Number(params.get('pedido') || 0);
@@ -233,10 +237,10 @@ async function vAgendar({ draw, need, live, params }) {
   const v = k => e(src[k] || '');
   draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Pedido #${p.id}</div><h1>${re ? 'Reagendar pedido' : 'Agendar data e horário'}</h1></div>
     <div class="form">${re ? '' : stepper(3)}<form class="card" id="f">
-      <div class="resumo"><span>Serviço: <strong>${e(p.servicos.nome)}</strong></span><span>Peças: <strong>${p.quantidade}</strong></span><span>Tempo estimado: <strong>${tempoFmt(p.tempo_estimado_min)}</strong></span><span>Valor: <strong>${money(p.valor_estimado)}</strong></span></div>
+      <div class="resumo"><span>Serviço: <strong>${e(p.servicos.nome)}</strong></span><span>Peças: <strong>${p.quantidade}</strong></span><span>Duração estimada: <strong>${tempoFmt(p.tempo_estimado_min)}</strong></span><span>Valor: <strong>${money(p.valor_estimado)}</strong></span></div>
       ${re && cur ? `<p class="note">Agendamento atual: <strong>${dataBR(cur.data_agendada)} às ${String(cur.horario).slice(0, 5)}</strong>. Escolha o novo dia e horário abaixo.</p>` : ''}
       <p class="alert err" id="err" hidden></p>
-      <label for="tipo">Tipo de agendamento</label>
+      <label for="tipo">Modalidade do atendimento</label>
       <select id="tipo"><option value="coleta" ${tipo0 === 'coleta' ? 'selected' : ''}>Coleta em casa</option><option value="balcao" ${tipo0 === 'balcao' ? 'selected' : ''}>Levar à lavanderia</option></select>
       <label for="tel">WhatsApp para contato</label>
       <input id="tel" type="tel" inputmode="tel" autocomplete="tel" maxlength="15" placeholder="(11) 90000-0000" required value="${e(fmtTel(src.telefone))}">
@@ -342,6 +346,7 @@ async function vAgendar({ draw, need, live, params }) {
   });
 }
 
+/* DFD 4.0 Consultar Disponibilidade */
 async function vHorarios({ draw, live }) {
   draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Agenda</div><h1>Consultar horários</h1>
     <p style="margin:0;max-width:640px">Escolha uma data e veja os horários disponíveis para coleta ou entrega. Atendemos de segunda a sexta, das 8h às 17h, e aos sábados, das 8h às 12h.</p></div>
@@ -367,6 +372,7 @@ const quando = (p, curto, comEnd) => {
   return `${dataBR(a.data_agendada)} às ${String(a.horario).slice(0, 5)}<br><small>${a.tipo === 'coleta' ? (curto ? 'Coleta' : 'Coleta em casa') : (curto ? 'Balcão' : 'Na lavanderia')}</small>${end}`;
 };
 
+/* DFD 6.0 Consultar Pedidos e Agendamentos (visão do cliente) */
 async function vPedidos({ draw, need, live }) {
   if (!need()) return;
   const { data, error } = await sb.from('pedidos').select(`*, servicos(nome), agendamentos(${AG_COLS})`).eq('cliente_id', user.id).order('criado_em', { ascending: false });
@@ -375,9 +381,9 @@ async function vPedidos({ draw, need, live }) {
   draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Olá, ${e(user.nome)}</div><h1>Meus pedidos</h1></div><div class="card">
     ${error ? '<p class="alert err">Não foi possível carregar seus pedidos.</p>' : ''}
     ${!l.length ? '<div class="vazio"><p>Você ainda não fez nenhum pedido.</p><a class="btn" href="#solicitar">Solicitar serviço</a></div>' : `
-    <div class="scroll"><table class="tbl"><thead><tr><th>Nº</th><th>Serviço</th><th>Peças</th><th>Tempo est.</th><th>Agendamento</th><th>Valor est.</th><th>Status</th><th></th></tr></thead><tbody>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Nº</th><th>Serviço</th><th>Peças</th><th>Duração est.</th><th>Agendamento</th><th>Valor est.</th><th>Status</th><th></th></tr></thead><tbody>
     ${l.map(p => `<tr><td data-label="Pedido">#${p.id}</td><td data-label="Serviço">${e(p.servicos?.nome)}</td><td data-label="Peças">${p.quantidade}</td>
-      <td data-label="Tempo est.">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p, false, true)}</td><td data-label="Valor est.">${totalTxt(p)}</td>
+      <td data-label="Duração est.">${tempoFmt(p.tempo_estimado_min)}</td><td data-label="Agendamento">${quando(p, false, true)}</td><td data-label="Valor est.">${totalTxt(p)}</td>
       <td data-label="Status"><span class="badge s-${p.status}">${STATUS[p.status]}</span></td>
       <td><div class="acoes">${p.status === 'pendente' ? `<a class="btn mini" href="#agendar?pedido=${p.id}">Agendar</a>` : ''}${p.status === 'agendado' && !p.pago ? `<button class="btn zap mini" data-pagar="${p.id}">Pagar agora</button>` : ''}${p.status === 'agendado' ? `<a class="btn mini" href="#agendar?pedido=${p.id}&reagendar=1">Reagendar</a>` : ''}${['pendente', 'agendado'].includes(p.status) ? `<button class="btn o mini" data-cancelar="${p.id}">Cancelar</button>` : ''}</div></td></tr>`).join('')}
     </tbody></table></div><div><a class="btn" href="#solicitar">Novo pedido</a></div>`}</div></div>`);
@@ -394,7 +400,7 @@ async function vPedidos({ draw, need, live }) {
   }));
 }
 
-/* ---------- administração ---------- */
+/* ---------- área do funcionário (perfil 'admin') ---------- */
 const zapMsg = (p, a) => {
   const n = String(p.clientes?.nome || '').split(' ')[0];
   const hh = a ? String(a.horario).slice(0, 5) : '';
@@ -423,8 +429,9 @@ const admClick = async ev => {
   const { error } = await sb.rpc('marcar_pago', { p_pedido: Number(g.dataset.pago), p_pago: g.dataset.v === '1' });
   flash(error ? 'Não foi possível atualizar o pagamento.' : 'Pagamento atualizado.', error ? 'err' : 'ok'); route();
 };
-const admTabs = a => `<div class="tabs">${[['agenda', 'Agenda do dia'], ['pedidos', 'Todos os pedidos'], ['bloqueios', 'Bloqueios'], ['frete', 'Frete'], ...(user.dono ? [['equipe', 'Equipe'], ['registro', 'Registro']] : [])].map(([k, t]) => `<a class="tab${a === k ? ' on' : ''}" href="#admin?aba=${k}">${t}</a>`).join('')}</div>`;
-const admShell = (aba, inner) => `<div class="wrap page"><div class="head"><div class="eyebrow">Administração</div><h1>Painel da lavanderia</h1></div>${admTabs(aba)}<div class="card" id="adm">${inner}</div></div>`;
+const admTabs = a => `<div class="tabs">${[['agenda', 'Agenda do dia'], ['pedidos', 'Todos os pedidos'], ['clientes', 'Clientes'], ['servicos', 'Serviços'], ['bloqueios', 'Bloqueios'], ['frete', 'Frete'], ...(user.dono ? [['equipe', 'Equipe'], ['registro', 'Registro']] : [])].map(([k, t]) => `<a class="tab${a === k ? ' on' : ''}" href="#admin?aba=${k}">${t}</a>`).join('')}</div>`;
+const admShell = (aba, inner) => `<div class="wrap page"><div class="head"><div class="eyebrow">Área do funcionário</div><h1>Painel da lavanderia</h1></div>${admTabs(aba)}<div class="card" id="adm">${inner}</div></div>`;
+const numOuNull = v => String(v).trim() === '' ? null : Number(String(v).replace(',', '.'));
 
 /* ---------- verificação em duas etapas (app autenticador) ---------- */
 async function mfaGate({ draw, live }) {
@@ -439,7 +446,7 @@ async function mfaGate({ draw, live }) {
       <p class="alert err" id="err" hidden></p>
       <label for="cod">Código</label><input id="cod" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
       <button class="btn fit" type="submit" id="b">Verificar</button></form>
-      ${SIDE('O painel da administração exige um segundo passo de segurança.')}</div>`);
+      ${SIDE('O painel do funcionário exige um segundo passo de segurança.')}</div>`);
     $('f').addEventListener('submit', async ev => {
       ev.preventDefault(); $('b').disabled = true; $('err').hidden = true;
       const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: ativo.id, code: $('cod').value.replace(/\D/g, '') });
@@ -474,7 +481,7 @@ async function vAdmin({ draw, need, live, params }) {
   const { data: aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
   if (!live()) return;
   if (aal?.currentLevel !== 'aal2') return mfaGate({ draw, live });
-  const aba = ['agenda', 'pedidos', 'bloqueios', 'frete', 'equipe', 'registro'].includes(params.get('aba')) ? params.get('aba') : 'agenda';
+  const aba = ['agenda', 'pedidos', 'clientes', 'servicos', 'bloqueios', 'frete', 'equipe', 'registro'].includes(params.get('aba')) ? params.get('aba') : 'agenda';
   if (['equipe', 'registro'].includes(aba) && !user.dono) { flash('Esta área é exclusiva do dono.', 'err'); return go('#admin'); }
 
   /* ----- Agenda do dia ----- */
@@ -535,7 +542,89 @@ async function vAdmin({ draw, need, live, params }) {
     return;
   }
 
-  /* ----- Equipe: quem é administrador (só o dono) ----- */
+  /* ----- Clientes (consulta, somente leitura) — RF001/RF005, DFD 1.0 e 6.0 ----- */
+  if (aba === 'clientes') {
+    const { data, error } = await sb.rpc('listar_clientes_func');
+    if (!live()) return;
+    const l = (data || []).slice().sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+    const tabela = r => `<div class="scroll"><table class="tbl"><thead><tr><th>Nome</th><th>E-mail</th><th>Telefone</th><th>Pedidos</th><th>Perfil</th><th></th></tr></thead><tbody>
+      ${r.map(c => { const z = waLink(c.telefone, `Olá, ${String(c.nome || '').split(' ')[0]}! Aqui é da SpinLav.`); return `<tr><td data-label="Nome">${e(c.nome)}</td><td data-label="E-mail">${e(c.email)}</td>
+        <td data-label="Telefone">${c.telefone ? e(fmtTel(c.telefone)) : '—'}</td><td data-label="Pedidos">${Number(c.total_pedidos) || 0}</td>
+        <td data-label="Perfil"><span class="badge ${c.perfil === 'admin' ? 's-agendado' : 's-cancelado'}">${c.perfil === 'admin' ? 'Funcionário' : 'Cliente'}</span></td>
+        <td>${z ? `<a class="btn zap mini" href="${e(z)}" target="_blank" rel="noopener">WhatsApp</a>` : '<small>sem telefone</small>'}</td></tr>`; }).join('')}</tbody></table></div>`;
+    draw(admShell('clientes', `
+      <p style="margin:0 0 14px">Consulta dos clientes cadastrados. Esta tela é somente leitura: o funcionário vê os dados de contato e o total de pedidos, mas não altera cadastros nem perfis.</p>
+      ${error ? '<p class="alert err">Não foi possível carregar os clientes. Rode o SQL funcionario-servicos-clientes.sql no Supabase.</p>' : ''}
+      <div class="filtros"><div><label for="f-q">Buscar por nome, e-mail ou telefone</label><input id="f-q" type="text" placeholder="Digite para filtrar"></div></div>
+      <p id="cont" style="margin:0 0 10px"></p><div id="lista"></div>`));
+    const lista = () => {
+      const q = $('f-q').value.trim().toLowerCase(), qn = soNum(q);
+      const r = l.filter(c => !q || `${c.nome} ${c.email}`.toLowerCase().includes(q) || (qn && soNum(c.telefone).includes(qn)));
+      $('cont').textContent = `${r.length} de ${l.length} cliente(s)`;
+      $('lista').innerHTML = r.length ? tabela(r) : '<div class="vazio"><p>Nenhum cliente encontrado.</p></div>';
+    };
+    $('f-q').addEventListener('input', lista); lista();
+    return;
+  }
+
+  /* ----- Serviços e tipos de lavagem (RF003, DFD 3.0) ----- */
+  if (aba === 'servicos') {
+    const { data, error } = await sb.from('servicos').select('*').order('id');
+    if (!live()) return;
+    const l = data || [];
+    const optIc = sel => Object.entries(ICONES_SERVICO).map(([k, t]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${t}</option>`).join('');
+    const ler = (p) => ({
+      nome: $(`${p}n`).value.trim(), descricao: $(`${p}d`).value.trim(), icone: $(`${p}i`).value,
+      preco_peca: numOuNull($(`${p}p`).value), tempo_base_min: numOuNull($(`${p}b`).value), tempo_peca_min: numOuNull($(`${p}t`).value)
+    });
+    const invalido = s => !s.nome ? 'Informe o nome do serviço.'
+      : !s.descricao ? 'Informe uma descrição curta.'
+      : (s.preco_peca == null || !(s.preco_peca >= 0)) ? 'Informe o preço por peça (0 ou mais).'
+      : (!Number.isInteger(s.tempo_base_min) || s.tempo_base_min < 0 || !Number.isInteger(s.tempo_peca_min) || s.tempo_peca_min < 0) ? 'Os tempos devem ser números inteiros de minutos (0 ou mais).' : '';
+    draw(admShell('servicos', `
+      <p style="margin:0 0 14px">Cadastre os tipos de lavagem. A <strong>duração</strong> de um pedido é calculada como <strong>tempo base + peças × tempo por peça</strong>. Alterar preço ou tempo vale só para pedidos novos: pedidos já feitos mantêm o valor e o tempo do momento em que foram registrados. Para tirar um serviço do site, desmarque “Ativo” (não é possível apagar serviços que já têm pedidos).</p>
+      ${error ? '<p class="alert err">Não foi possível carregar os serviços. Rode o SQL funcionario-servicos-clientes.sql no Supabase.</p>' : ''}
+      <p class="alert err" id="err" hidden></p>
+      <form id="fs" class="filtros">
+        <div><label for="n-n">Nome</label><input id="n-n" type="text" maxlength="60" required></div>
+        <div><label for="n-d">Descrição</label><input id="n-d" type="text" maxlength="160" required></div>
+        <div><label for="n-i">Ícone</label><select id="n-i">${optIc('wash')}</select></div>
+        <div><label for="n-p">Preço por peça (R$)</label><input id="n-p" type="number" min="0" step="0.01" required></div>
+        <div><label for="n-b">Tempo base (min)</label><input id="n-b" type="number" min="0" step="1" value="0" required></div>
+        <div><label for="n-t">Tempo por peça (min)</label><input id="n-t" type="number" min="0" step="1" value="0" required></div>
+        <div style="justify-content:flex-end"><button class="btn" type="submit" id="n-ok">Adicionar serviço</button></div>
+      </form>
+      ${l.length ? `<div class="scroll"><table class="tbl"><thead><tr><th>Nome</th><th>Descrição</th><th>Ícone</th><th>Preço/peça</th><th>Base (min)</th><th>Por peça (min)</th><th>Ativo</th><th></th></tr></thead><tbody>
+        ${l.map(s => `<tr><td data-label="Nome"><input id="e${s.id}n" type="text" maxlength="60" value="${e(s.nome)}"></td>
+          <td data-label="Descrição"><input id="e${s.id}d" type="text" maxlength="160" value="${e(s.descricao)}"></td>
+          <td data-label="Ícone"><select id="e${s.id}i">${optIc(s.icone)}</select></td>
+          <td data-label="Preço/peça"><input id="e${s.id}p" type="number" min="0" step="0.01" value="${s.preco_peca}" style="max-width:110px"></td>
+          <td data-label="Base (min)"><input id="e${s.id}b" type="number" min="0" step="1" value="${s.tempo_base_min}" style="max-width:100px"></td>
+          <td data-label="Por peça (min)"><input id="e${s.id}t" type="number" min="0" step="1" value="${s.tempo_peca_min}" style="max-width:100px"></td>
+          <td data-label="Ativo"><input id="e${s.id}a" type="checkbox" ${s.ativo ? 'checked' : ''} aria-label="Ativo"></td>
+          <td><button class="btn mini" data-ssalvar="${s.id}">Salvar</button></td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="vazio"><p>Nenhum serviço cadastrado.</p></div>'}`));
+    const falha = m => { $('err').textContent = m; $('err').hidden = false; };
+    $('fs').addEventListener('submit', async ev => {
+      ev.preventDefault(); $('err').hidden = true;
+      const s = ler('n-'); const m = invalido(s); if (m) return falha(m);
+      $('n-ok').disabled = true;
+      const { error } = await sb.from('servicos').insert({ ...s, ativo: true });
+      if (error) { $('n-ok').disabled = false; return falha('Não foi possível adicionar: ' + error.message); }
+      servicosP = null; flash('Serviço adicionado.'); route();
+    });
+    $('adm').addEventListener('click', async ev => {
+      const b = ev.target.closest('[data-ssalvar]'); if (!b) return;
+      const i = b.dataset.ssalvar; $('err').hidden = true;
+      const s = ler(`e${i}`); const m = invalido(s); if (m) return falha(m);
+      b.disabled = true;
+      const { error } = await sb.from('servicos').update({ ...s, ativo: $(`e${i}a`).checked }).eq('id', i);
+      servicosP = null; flash(error ? 'Não foi possível salvar o serviço.' : 'Serviço atualizado.', error ? 'err' : 'ok'); route();
+    });
+    return;
+  }
+
+  /* ----- Equipe: quem é funcionário (só o dono) ----- */
   if (aba === 'equipe') {
     const { data, error } = await sb.rpc('listar_clientes');
     if (!live()) return;
@@ -543,10 +632,10 @@ async function vAdmin({ draw, need, live, params }) {
     const l = (data || []).slice().sort((a, b) => rank(a) - rank(b) || String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
     const tabela = r => `<div class="scroll"><table class="tbl"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th></th></tr></thead><tbody>
       ${r.map(c => `<tr><td data-label="Nome">${e(c.nome)}</td><td data-label="E-mail">${e(c.email)}</td>
-        <td data-label="Perfil"><span class="badge ${c.dono ? 's-concluido' : c.perfil === 'admin' ? 's-agendado' : 's-cancelado'}">${c.dono ? 'Dono' : c.perfil === 'admin' ? 'Administrador' : 'Cliente'}</span></td>
+        <td data-label="Perfil"><span class="badge ${c.dono ? 's-concluido' : c.perfil === 'admin' ? 's-agendado' : 's-cancelado'}">${c.dono ? 'Dono' : c.perfil === 'admin' ? 'Funcionário' : 'Cliente'}</span></td>
         <td>${c.id === user.id ? '<small>você</small>' : c.dono ? '<small>dono</small>' : c.perfil === 'admin'
-          ? `<button class="btn o mini" data-perfil="${c.id}" data-novo="cliente" data-nome="${e(c.nome)}">Remover admin</button>`
-          : `<button class="btn mini" data-perfil="${c.id}" data-novo="admin" data-nome="${e(c.nome)}">Tornar admin</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+          ? `<button class="btn o mini" data-perfil="${c.id}" data-novo="cliente" data-nome="${e(c.nome)}">Remover acesso</button>`
+          : `<button class="btn mini" data-perfil="${c.id}" data-novo="admin" data-nome="${e(c.nome)}">Tornar funcionário</button>`}</td></tr>`).join('')}</tbody></table></div>`;
     draw(admShell('equipe', `
       <p style="margin:0 0 14px">Só o dono vê esta aba. A pessoa precisa ter criado uma conta no site antes. Depois de mudar, ela deve sair e entrar de novo. Todas as mudanças ficam no Registro.</p>
       ${error ? '<p class="alert err">Não foi possível carregar a lista. Rode o SQL seguranca-admin.sql no Supabase.</p>' : ''}
@@ -561,10 +650,10 @@ async function vAdmin({ draw, need, live, params }) {
     $('lista').addEventListener('click', async ev => {
       const b = ev.target.closest('[data-perfil]'); if (!b) return;
       const tornar = b.dataset.novo === 'admin';
-      if (!confirm(tornar ? `Dar acesso de administrador para ${b.dataset.nome}?` : `Remover o acesso de administrador de ${b.dataset.nome}?`)) return;
+      if (!confirm(tornar ? `Dar acesso de funcionário para ${b.dataset.nome}?` : `Remover o acesso de funcionário de ${b.dataset.nome}?`)) return;
       b.disabled = true;
       const { error } = await sb.rpc('definir_perfil', { p_cliente: b.dataset.perfil, p_perfil: b.dataset.novo });
-      flash(error ? 'Não foi possível alterar o perfil: ' + error.message : (tornar ? 'Agora essa pessoa é administradora.' : 'Acesso de administrador removido.'), error ? 'err' : 'ok'); route();
+      flash(error ? 'Não foi possível alterar o perfil: ' + error.message : (tornar ? 'Agora essa pessoa é funcionária.' : 'Acesso de funcionário removido.'), error ? 'err' : 'ok'); route();
     });
     return;
   }
@@ -574,11 +663,11 @@ async function vAdmin({ draw, need, live, params }) {
     const { data, error } = await sb.from('auditoria').select('*').order('quando', { ascending: false }).limit(300);
     if (!live()) return;
     const l = data || [];
-    const ACAO = { pedido_status: 'Status de pedido', perfil: 'Acesso / perfil', bloqueio_criado: 'Bloqueio criado', bloqueio_removido: 'Bloqueio removido' };
+    const ACAO = { pedido_status: 'Status de pedido', perfil: 'Acesso / perfil', bloqueio_criado: 'Bloqueio criado', bloqueio_removido: 'Bloqueio removido', servico_criado: 'Serviço criado', servico_alterado: 'Serviço alterado' };
     const tabela = r => `<div class="scroll"><table class="tbl"><thead><tr><th>Quando</th><th>Quem</th><th>Ação</th><th>Detalhe</th></tr></thead><tbody>
       ${r.map(x => `<tr><td data-label="Quando">${e(new Date(x.quando).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }))}</td><td data-label="Quem">${e(x.ator_email)}</td><td data-label="Ação">${e(ACAO[x.acao] || x.acao)}</td><td data-label="Detalhe">${e(x.alvo || '')}${x.detalhe ? ' — ' + e(x.detalhe) : ''}</td></tr>`).join('')}</tbody></table></div>`;
     draw(admShell('registro', `
-      <p style="margin:0 0 14px">Últimas ações feitas por administradores (até 300). Este registro não pode ser editado nem apagado pelo site.</p>
+      <p style="margin:0 0 14px">Últimas ações feitas por funcionários (até 300). Este registro não pode ser editado nem apagado pelo site.</p>
       ${error ? '<p class="alert err">Não foi possível carregar o registro. Rode o SQL seguranca-admin.sql no Supabase.</p>' : ''}
       <div class="filtros"><div><label for="f-q">Filtrar</label><input id="f-q" type="text" placeholder="Pessoa, ação ou pedido"></div></div>
       <div id="lista"></div>`));
@@ -596,7 +685,7 @@ async function vAdmin({ draw, need, live, params }) {
     const { data, error } = await sb.from('zonas_frete').select('*').order('uf').order('cidade').order('bairro', { nullsFirst: true });
     if (!live()) return;
     const l = data || [];
-    const num = v => String(v).trim() === '' ? null : Number(String(v).replace(',', '.'));
+    const num = numOuNull;
     draw(admShell('frete', `
       <p style="margin:0 0 14px">Cadastre onde você faz coleta/entrega e quanto cobra. O valor de um <strong>bairro</strong> vale mais que o da <strong>cidade</strong>. Valor 0 = frete grátis. “Grátis acima de” zera o frete quando o valor das peças do pedido chega a esse valor. Cidades não cadastradas ficam sem coleta em casa.</p>
       ${error ? '<p class="alert err">Não foi possível carregar as zonas. Rode o SQL frete-admin-pagamento.sql no Supabase.</p>' : ''}
@@ -685,7 +774,7 @@ async function route() {
   };
   const need = (admin = false) => {
     if (!user) { flash('Entre na sua conta para continuar.', 'err'); go('#login'); return false; }
-    if (admin && user.perfil !== 'admin') { flash('Acesso restrito à administração.', 'err'); go('#inicio'); return false; }
+    if (admin && user.perfil !== 'admin') { flash('Acesso restrito aos funcionários.', 'err'); go('#inicio'); return false; }
     return true;
   };
   renderHeader(key); showFlash();
