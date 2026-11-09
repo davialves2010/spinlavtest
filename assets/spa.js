@@ -1,5 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { WHATSAPP_LAVANDERIA, PIX_CHAVE } from './negocio.js';   // WhatsApp e chave Pix: edite assets/negocio.js
 
 /* ============ base ============ */
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -13,13 +14,11 @@ const STATUS = { pendente: 'Pendente', agendado: 'Agendado', em_andamento: 'Em a
 const tempoFmt = m => { const h = Math.floor(m / 60), r = m % 60; return h ? `${h}h${r ? ' ' + r + 'min' : ''}` : `${r} min`; };
 const calcTempo = (s, q) => s.tempo_base_min + q * s.tempo_peca_min;
 const fmtCep = c => { const d = String(c || '').replace(/\D/g, '').slice(0, 8); return d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d; };
-const WHATSAPP_LAVANDERIA = '';   // WhatsApp da lavanderia com DDI+DDD, ex.: '5511999999999' (vazio = não mostra o link)
 const soNum = s => String(s || '').replace(/\D/g, '');
 const fmtTel = t => { const d = soNum(t).slice(0, 11); if (d.length <= 2) return d; if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`; if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`; return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`; };
 const waLink = (tel, msg) => { let d = soNum(tel); if (!d) return ''; if (d.length <= 11) d = '55' + d; return `https://wa.me/${d}?text=${encodeURIComponent(msg)}`; };
 const AG_COLS = 'data_agendada,horario,tipo,telefone,cep,logradouro,numero,complemento,bairro,cidade,uf,forma_pagamento,frete';
 const PAGTO = { pix: 'Pix', cartao: 'Cartão (maquininha)', dinheiro: 'Dinheiro' };
-const PIX_CHAVE = '';   // chave Pix da lavanderia (vazio = não mostra no aviso de confirmação)
 const endTxt = a => a?.logradouro ? `${a.logradouro}, ${a.numero}${a.complemento ? ' – ' + a.complemento : ''} – ${a.bairro}, ${a.cidade}/${a.uf}` : '';
 
 const I = {
@@ -65,17 +64,35 @@ async function horarios(d) {
   const agora = new Date().toTimeString().slice(0, 5);
   return { fechado: false, erro: !!error, lista: base.map(h => ({ h, livre: !lotado.has(h) && !(d === hoje() && h <= agora) })) };
 }
+/* DFD 5.0: previsão de conclusão = início + duração, contando só o expediente (seg–sex 8h–17h, sáb 8h–12h, dom fechado) */
+const JANELA = d => { const w = new Date(d + 'T12:00:00').getDay(); return w === 0 ? null : w === 6 ? [480, 720] : [480, 1020]; };
+const hm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+function previsao(data, hora, minutos) {
+  let d = data, t = Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3, 5)), falta = Math.max(0, minutos);
+  for (let i = 0; i < 90; i++) {
+    const j = JANELA(d);
+    if (j) {
+      t = Math.max(t, j[0]);
+      const livre = j[1] - t;
+      if (livre > 0 && falta <= livre) return { data: d, hora: hm(t + falta) };
+      if (livre > 0) falta -= livre;
+    }
+    const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); d = x.toISOString().slice(0, 10); t = 0;
+  }
+  return null;
+}
 const slotsHtml = l => `<div class="slots">${l.map(s => `<button type="button" class="slot" data-h="${s.h}" ${s.livre ? '' : 'disabled'}>${s.h}<small>${s.livre ? 'Disponível' : 'Indisponível'}</small></button>`).join('')}</div>`;
 
 /* ============ cabeçalho e rodapé (desenhados uma vez, só atualizam) ============ */
-const NAVKEY = { inicio: 'inicio', servicos: 'servicos', solicitar: 'servicos', agendar: 'servicos', horarios: 'servicos', sobre: 'sobre' };
+const NAVKEY = { inicio: 'inicio', servicos: 'servicos', solicitar: 'servicos', agendar: 'servicos', horarios: 'servicos', sobre: 'sobre', perfil: 'perfil' };
 function renderHeader(key = '') {
   const ativo = NAVKEY[key] || '';
   const a = (h, t, k) => `<a href="${h}"${k === ativo ? ' class="on"' : ''}>${t}</a>`;
+  const perfilLink = user ? a('#perfil', 'Meu perfil', 'perfil') : '';
   const conta = user
     ? `<a class="btn" href="${user.perfil === 'admin' ? '#admin' : '#pedidos'}">${user.perfil === 'admin' ? 'Painel' : 'Meus pedidos'}</a><a class="sair" href="#" id="sair">Sair</a>`
     : '<a class="btn" href="#login">Entrar</a>';
-  $('hdr').innerHTML = `<div class="wrap bar"><a class="logo" href="#inicio"><img src="assets/img/logo.jpg" alt="">SpinLav</a><button class="menu" id="menu" type="button" aria-label="Abrir menu" aria-expanded="false"><span></span></button><nav id="nv">${a('#inicio', 'Início', 'inicio')}${a('#servicos', 'Serviços', 'servicos')}${a('#sobre', 'Sobre Nós', 'sobre')}${conta}</nav></div>`;
+  $('hdr').innerHTML = `<div class="wrap bar"><a class="logo" href="#inicio"><img src="assets/img/logo.jpg" alt="">SpinLav</a><button class="menu" id="menu" type="button" aria-label="Abrir menu" aria-expanded="false"><span></span></button><nav id="nv">${a('#inicio', 'Início', 'inicio')}${a('#servicos', 'Serviços', 'servicos')}${a('#sobre', 'Sobre Nós', 'sobre')}${perfilLink}${conta}</nav></div>`;
   const mb = $('menu'), nv = $('nv');
   mb.addEventListener('click', () => { const o = nv.classList.toggle('open'); mb.setAttribute('aria-expanded', o); });
   nv.addEventListener('click', ev => { if (ev.target.closest('a')) { nv.classList.remove('open'); mb.setAttribute('aria-expanded', 'false'); } });
@@ -153,6 +170,7 @@ function vLogin({ draw }) {
       ${GOOGLE}
       <label for="email">E-mail</label><input id="email" type="email" required autocomplete="email">
       <label for="senha">Senha</label><input id="senha" type="password" required autocomplete="current-password">
+      <div class="row"><a href="#recuperar">Esqueci minha senha</a></div>
       <button class="btn fit" type="submit" id="b">Entrar</button>
       <p class="note">Ainda não tem conta? <a href="#cadastro"><strong>Cadastre-se</strong></a></p></form>
     ${SIDE('Cuidado e praticidade com a identidade acolhedora da SpinLav.')}</div>`);
@@ -187,6 +205,108 @@ function vCadastro({ draw }) {
     if (error) return erro(error.message.includes('already') ? 'Já existe uma conta com este e-mail.' : error.message);
     if (data.session) { await refreshUser(); flash('Conta criada com sucesso! Agora você já pode solicitar um serviço.'); go('#servicos'); }
     else { flash('Conta criada! Enviamos um e-mail de confirmação: confirme e depois faça login.'); go('#login'); }
+  });
+}
+
+/* ---------- Meu perfil (RF001: o cliente consulta e corrige o próprio cadastro) ---------- */
+async function vPerfil({ draw, need, live }) {
+  if (!need()) return;
+  const { data: pf } = await sb.from('clientes').select('nome,email,telefone,cep,logradouro,numero,complemento,bairro,cidade,uf').eq('id', user.id).maybeSingle();
+  if (!live()) return;
+  const v = k => e(pf?.[k] || '');
+  draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Minha conta</div><h1>Meu perfil</h1></div>
+    <div class="form"><form class="card" id="f">
+      <p class="alert err" id="err" hidden></p>
+      <label for="nome">Nome</label><input id="nome" type="text" required minlength="2" maxlength="80" value="${v('nome')}">
+      <label for="email">E-mail</label><input id="email" type="email" value="${e(pf?.email || user.email)}" disabled>
+      <label for="tel">WhatsApp / telefone</label>
+      <input id="tel" type="tel" inputmode="tel" autocomplete="tel" maxlength="15" placeholder="(11) 90000-0000" value="${e(fmtTel(pf?.telefone))}">
+      <fieldset class="end" aria-label="Endereço">
+        <div class="eyebrow" style="margin:0">Endereço para coleta</div>
+        <label for="cep">CEP</label>
+        <input id="cep" type="text" inputmode="numeric" autocomplete="postal-code" maxlength="9" placeholder="00000-000" value="${e(fmtCep(pf?.cep))}">
+        <p class="note" id="cepmsg" hidden></p>
+        <label for="rua">Rua / Avenida</label><input id="rua" type="text" autocomplete="address-line1" maxlength="120" value="${v('logradouro')}">
+        <div class="duo">
+          <div><label for="num">Número</label><input id="num" type="text" maxlength="10" autocomplete="off" value="${v('numero')}"></div>
+          <div><label for="comp">Complemento</label><input id="comp" type="text" maxlength="60" autocomplete="address-line2" placeholder="Apto, bloco… (opcional)" value="${v('complemento')}"></div>
+        </div>
+        <label for="bai">Bairro</label><input id="bai" type="text" maxlength="80" value="${v('bairro')}">
+        <div class="duo uf">
+          <div><label for="cid">Cidade</label><input id="cid" type="text" maxlength="80" autocomplete="address-level2" value="${v('cidade')}"></div>
+          <div><label for="uf">UF</label><input id="uf" type="text" maxlength="2" autocomplete="address-level1" style="text-transform:uppercase" value="${v('uf')}"></div>
+        </div>
+      </fieldset>
+      <button class="btn fit" type="submit" id="b">Salvar alterações</button>
+      <p class="note"><a href="#novasenha"><strong>Alterar minha senha</strong></a></p>
+    </form></div></div>`);
+  $('tel').addEventListener('input', () => { $('tel').value = fmtTel($('tel').value); });
+  $('cep').addEventListener('input', async () => {
+    const d = $('cep').value.replace(/\D/g, '').slice(0, 8);
+    $('cep').value = fmtCep(d);
+    if (d.length !== 8) { $('cepmsg').hidden = true; return; }
+    const m = $('cepmsg'); m.textContent = 'Buscando endereço…'; m.hidden = false;
+    try {
+      const r = await (await fetch(`https://viacep.com.br/ws/${d}/json/`)).json();
+      if (!live()) return;
+      if (r.erro) { m.textContent = 'CEP não encontrado. Preencha o endereço manualmente.'; return; }
+      if (r.logradouro) $('rua').value = r.logradouro;
+      if (r.bairro) $('bai').value = r.bairro;
+      $('cid').value = r.localidade || ''; $('uf').value = r.uf || '';
+      m.hidden = true; $('num').focus();
+    } catch { if (live()) m.textContent = 'Não foi possível buscar o CEP. Preencha o endereço manualmente.'; }
+  });
+  const falha = m => { $('err').textContent = m; $('err').hidden = false; $('b').disabled = false; };
+  $('f').addEventListener('submit', async ev => {
+    ev.preventDefault(); $('b').disabled = true; $('err').hidden = true;
+    const tel = soNum($('tel').value), cep = soNum($('cep').value), uf = $('uf').value.trim().toUpperCase();
+    if (tel && (tel.length < 10 || tel.length > 11)) return falha('Informe o telefone com DDD, por exemplo (11) 90000-0000.');
+    if (cep && cep.length !== 8) return falha('O CEP precisa ter 8 números.');
+    if (uf && !/^[A-Z]{2}$/.test(uf)) return falha('A UF precisa ter 2 letras (ex.: SP).');
+    const { error } = await sb.from('clientes').update({
+      nome: $('nome').value.trim(), telefone: tel || null, cep: cep || null, logradouro: $('rua').value.trim() || null, numero: $('num').value.trim() || null,
+      complemento: $('comp').value.trim() || null, bairro: $('bai').value.trim() || null, cidade: $('cid').value.trim() || null, uf: uf || null
+    }).eq('id', user.id);
+    if (error) return falha('Não foi possível salvar: ' + error.message);
+    user.nome = $('nome').value.trim(); flash('Perfil atualizado.'); route();
+  });
+}
+
+/* ---------- recuperação de senha ---------- */
+function vRecuperar({ draw }) {
+  if (user) return go('#perfil');
+  draw(`<div class="wrap login">
+    <form class="card" id="f"><div class="eyebrow" style="margin:0">Acesso</div><h1>Recuperar senha</h1>
+      <p style="margin:0">Informe o e-mail da sua conta. Enviaremos um link para você criar uma nova senha.</p>
+      <p class="alert err" id="err" hidden></p><p class="alert ok" id="okm" hidden></p>
+      <label for="email">E-mail</label><input id="email" type="email" required autocomplete="email">
+      <button class="btn fit" type="submit" id="b">Enviar link</button>
+      <p class="note">Lembrou a senha? <a href="#login"><strong>Entrar</strong></a></p></form>
+    ${SIDE('Você receberá um e-mail com o link para redefinir sua senha.')}</div>`);
+  $('f').addEventListener('submit', async ev => {
+    ev.preventDefault(); $('b').disabled = true; $('err').hidden = true; $('okm').hidden = true;
+    const { error } = await sb.auth.resetPasswordForEmail($('email').value.trim(), { redirectTo: location.origin + '/' });
+    if (error) { $('err').textContent = /rate|seconds|limit/i.test(error.message) ? 'Aguarde um minuto antes de pedir outro link.' : 'Não foi possível enviar o e-mail agora. Tente novamente.'; $('err').hidden = false; $('b').disabled = false; return; }
+    $('okm').textContent = 'Se existir uma conta com esse e-mail, enviamos o link. Confira também a caixa de spam.'; $('okm').hidden = false; $('b').disabled = false;
+  });
+}
+
+function vNovaSenha({ draw }) {
+  if (!user) { flash('O link expirou ou é inválido. Peça um novo.', 'err'); return go('#recuperar'); }
+  draw(`<div class="wrap login">
+    <form class="card" id="f"><div class="eyebrow" style="margin:0">Segurança</div><h1>Nova senha</h1>
+      <p class="alert err" id="err" hidden></p>
+      <label for="senha">Nova senha</label><input id="senha" type="password" minlength="6" required autocomplete="new-password">
+      <label for="conf">Confirmar nova senha</label><input id="conf" type="password" minlength="6" required autocomplete="new-password">
+      <button class="btn fit" type="submit" id="b">Salvar nova senha</button></form>
+    ${SIDE('Escolha uma senha com pelo menos 6 caracteres.')}</div>`);
+  $('f').addEventListener('submit', async ev => {
+    ev.preventDefault(); $('b').disabled = true; $('err').hidden = true;
+    const erro = m => { $('err').textContent = m; $('err').hidden = false; $('b').disabled = false; };
+    if ($('senha').value !== $('conf').value) return erro('As senhas não coincidem.');
+    const { error } = await sb.auth.updateUser({ password: $('senha').value });
+    if (error) return erro(/same|different/i.test(error.message) ? 'A nova senha precisa ser diferente da atual.' : 'Não foi possível alterar a senha: ' + error.message);
+    flash('Senha alterada com sucesso.'); go(user.perfil === 'admin' ? '#admin' : '#pedidos');
   });
 }
 
@@ -268,6 +388,7 @@ async function vAgendar({ draw, need, live, params }) {
       <div class="resumo" id="fr" hidden></div>
       <label for="dt">${re ? 'Nova data' : 'Data'}</label><input id="dt" type="date" min="${hoje()}" required>
       <label>Horários</label><div id="slots"><p class="note">Escolha uma data para consultar os horários disponíveis.</p></div>
+      <div class="resumo" id="conc" hidden></div>
       <button class="btn fit" type="submit" id="b" disabled>${re ? 'Confirmar novo horário' : 'Confirmar agendamento'}</button></form></div></div>`);
 
   /* endereço: aparece só na coleta em casa */
@@ -310,7 +431,7 @@ async function vAgendar({ draw, need, live, params }) {
 
   let h = '';
   const carregar = async () => {
-    h = ''; $('b').disabled = true;
+    h = ''; $('b').disabled = true; $('conc').hidden = true;
     if (!$('dt').value || $('dt').value < hoje()) { $('slots').innerHTML = '<p class="note">Escolha uma data a partir de hoje.</p>'; return; }
     $('slots').innerHTML = '<p class="note">Consultando horários…</p>';
     const r = await horarios($('dt').value); if (!live()) return;
@@ -322,6 +443,9 @@ async function vAgendar({ draw, need, live, params }) {
   $('slots').addEventListener('click', ev => {
     const s = ev.target.closest('.slot'); if (!s || s.disabled) return;
     $('slots').querySelectorAll('.slot').forEach(x => x.classList.remove('sel')); s.classList.add('sel'); h = s.dataset.h; $('b').disabled = false;
+    const pv = previsao($('dt').value, h, Number(p.tempo_estimado_min) || 0);
+    $('conc').innerHTML = pv ? `<span>Previsão de conclusão: <strong>${dataBR(pv.data)} às ${pv.hora}</strong></span><span><small>Estimativa de ${tempoFmt(p.tempo_estimado_min)} contando só o horário de funcionamento. O prazo final é confirmado pela lavanderia.</small></span>` : '';
+    $('conc').hidden = !pv;
   });
   const falha = m => { $('err').textContent = m; $('err').hidden = false; };
   $('f').addEventListener('submit', async ev => {
@@ -758,7 +882,7 @@ async function vAdmin({ draw, need, live, params }) {
 }
 
 /* ============ roteador (troca de página instantânea, sem recarregar) ============ */
-const routes = { inicio: vInicio, servicos: vServicos, sobre: vSobre, login: vLogin, cadastro: vCadastro, solicitar: vSolicitar, agendar: vAgendar, horarios: vHorarios, pedidos: vPedidos, admin: vAdmin };
+const routes = { inicio: vInicio, servicos: vServicos, sobre: vSobre, login: vLogin, cadastro: vCadastro, perfil: vPerfil, recuperar: vRecuperar, novasenha: vNovaSenha, solicitar: vSolicitar, agendar: vAgendar, horarios: vHorarios, pedidos: vPedidos, admin: vAdmin };
 let token = 0;
 async function route() {
   const [name, qs] = location.hash.replace(/^#/, '').split('?');
@@ -796,6 +920,7 @@ async function boot() {
     await refreshUser();
     if (p.get('error_description')) { flash('O link do e-mail é inválido ou expirou. Entre ou cadastre-se novamente.', 'err'); history.replaceState(null, '', '#login'); }
     else if (p.get('type') === 'signup') { flash('E-mail confirmado! Você já pode usar sua conta.'); history.replaceState(null, '', user ? '#servicos' : '#login'); }
+    else if (p.get('type') === 'recovery') { flash(user ? 'Link confirmado. Escolha sua nova senha.' : 'O link expirou. Peça um novo.', user ? 'ok' : 'err'); history.replaceState(null, '', user ? '#novasenha' : '#recuperar'); }
     else if (user) { flash('Olá, ' + user.nome + '! Login feito com sucesso.'); history.replaceState(null, '', user.perfil === 'admin' ? '#admin' : '#servicos'); }
     else history.replaceState(null, '', '#login');
   } else await refreshUser();

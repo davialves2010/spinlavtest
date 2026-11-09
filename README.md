@@ -12,7 +12,7 @@ O banco de dados **não é ator**: é parte do sistema (Supabase, acessado pela 
 ## Requisitos funcionais (RF) → site
 | RF | Requisito | Onde no site |
 |---|---|---|
-| RF001 | Gerenciar cadastro de clientes | `#cadastro`, `#login` (cliente); painel → aba **Clientes** (funcionário, leitura) |
+| RF001 | Gerenciar cadastro de clientes | `#cadastro`, `#login`, `#perfil` (o cliente consulta e corrige seus dados), `#recuperar` (esqueci a senha); painel → aba **Clientes** (funcionário, leitura) |
 | RF002 | Registrar e consultar pedidos de lavagem | `#solicitar`, `#pedidos` |
 | RF003 | Gerenciar serviços e tipos de lavagem | painel → aba **Serviços** (criar, editar preço/tempos, ativar/desativar) |
 | RF004 | Realizar agendamentos, verificando horários e calculando a duração | `#agendar` (+ consulta em `#horarios`) |
@@ -29,7 +29,7 @@ O banco de dados **não é ator**: é parte do sistema (Supabase, acessado pela 
 | LE006 | Cliente consulta seus pedidos e agendamentos | `#pedidos` |
 | LE007 | Funcionário consulta agendamentos e pedidos | painel (`#admin`) |
 
-A **duração** não é evento: é regra interna do agendamento (`tempo_base + peças × tempo_por_peça`, calculada pelo gatilho do banco e exibida em `#agendar`).
+A **duração** não é evento: é regra interna do agendamento (`tempo_base + peças × tempo_por_peça`, calculada pelo gatilho do banco e exibida em `#agendar`). Ao escolher o horário, o site mostra a **previsão de conclusão**: início + duração, contando só o expediente (seg–sex 8h–17h, sáb 8h–12h, domingo fechado).
 
 ## DFD nível 0 (renumerado)
 | Nº | Processo | No site | Depósito |
@@ -38,7 +38,7 @@ A **duração** não é evento: é regra interna do agendamento (`tempo_base + p
 | 2.0 | Registrar Pedidos | `#solicitar` | D2 `pedidos` |
 | 3.0 | Gerenciar Serviços de Lavagem | painel → Serviços | D3 `servicos` |
 | 4.0 | Consultar Disponibilidade | `#horarios`, horários em `#agendar` | lê D4 `agendamentos` e `bloqueios` (função `horarios_lotados`) |
-| 5.0 | Realizar Agendamentos | `#agendar` (calcula a duração com os tempos de D3) | D4 `agendamentos` |
+| 5.0 | Realizar Agendamentos | `#agendar` (calcula a duração com os tempos de D3 e mostra a previsão de conclusão) | D4 `agendamentos` |
 | 6.0 | Consultar Pedidos e Agendamentos | `#pedidos`, abas Agenda e Pedidos | lê D2, D4 |
 
 Entidades externas: **Cliente** e **Funcionário**.
@@ -49,14 +49,14 @@ Entidades externas: **Cliente** e **Funcionário**.
 - **Conflito de horário:** até 3 pedidos por horário e respeito aos bloqueios, validado no banco.
 - **Valor e tempo congelados:** `valor_estimado` e `tempo_estimado_min` são gravados no pedido pelo gatilho; mudar o preço do serviço depois não altera pedidos antigos.
 - **Agenda:** seg–sex 8h–17h, sábado 8h–12h, domingo fechado, horários de 1 em 1 hora. Cancelar um pedido libera o horário.
-- Na interface, a coluna `agendamentos.tipo` aparece como **Modalidade** (para não confundir com “tipo de lavagem”, que é o serviço).
+- Na interface, a coluna `agendamentos.tipo` aparece como **Modalidade** (para não confundir com “tipo de lavagem”, que é o serviço). No banco ela está documentada por comentário (`supabase/documentar-colunas.sql`).
 
 ## Como o site fala com o banco (Web × Mobile)
 O cliente usa o site instalado como app (PWA) no celular; o funcionário usa o painel no computador. Os dois são o mesmo código e acessam o **mesmo Supabase** (API + Auth + RLS). Não há dois bancos: o que o cliente agenda aparece na hora no painel.
 
 ## 1) Supabase
 1. Crie um projeto em https://supabase.com.
-2. **SQL Editor** → rode, nesta ordem: `supabase/schema.sql`, `supabase/seguranca-admin.sql`, os SQLs de frete/pagamento que você já usa e **`supabase/funcionario-servicos-clientes.sql`**.
+2. **SQL Editor** → rode, nesta ordem: `supabase/schema.sql`, `supabase/seguranca-admin.sql`, os SQLs de frete/pagamento que você já usa **`supabase/funcionario-servicos-clientes.sql`** e `supabase/documentar-colunas.sql`.
 3. **Project Settings → API**: copie a Project URL e a anon key para `assets/config.js`.
 4. Para testar rápido: **Authentication → Providers → Email** → desative "Confirm email" (em produção, deixe ligado — veja `SEGURANCA.md`).
 
@@ -80,10 +80,14 @@ Depois o dono promove os demais funcionários pela aba **Equipe**.
 - `index.html` — casca única (cabeçalho, rodapé e área de conteúdo)
 - `assets/spa.js` — rotas, páginas e acesso ao Supabase
 - `assets/config.js` — URL e chave do Supabase (**não sobrescreva o seu ao atualizar**)
+- `assets/negocio.js` — WhatsApp da lavanderia e chave Pix (preencha aqui)
 - `supabase/` — SQLs do banco
 - `docs/BANCO-DE-DADOS.md` — MER/DER e normalização (1FN, 2FN, 3FN)
 - `docs/casos-de-uso.svg` — diagrama de casos de uso (UML)
 - `SEGURANCA.md` — checklist e tabela de permissões
+
+## Recuperação de senha
+No Supabase → **Authentication → URL Configuration**, a URL do site precisa estar em *Site URL* e em *Redirect URLs* (o link do e-mail volta para a raiz do site). O modelo do e-mail pode ser traduzido em **Authentication → Email Templates → Reset Password**.
 
 ## Login com Google
 1. Google Cloud Console → crie um projeto → **APIs e serviços → Tela de permissão OAuth** (tipo Externo) → **Credenciais → Criar credenciais → ID do cliente OAuth** (aplicativo da Web).
