@@ -144,7 +144,7 @@ async function vServicos({ draw }) {
     <p style="margin:0;max-width:640px">Escolha a opção que combina com as suas peças. Cada cuidado foi pensado para facilitar o seu dia a dia.</p>
     <p style="margin:18px 0 0"><a class="btn o" href="#horarios">Consultar horários</a></p></div>
     ${s.length ? '' : '<p class="alert err">Não foi possível carregar os serviços. Confira a configuração do Supabase.</p>'}
-    <div class="grid g4">${s.map(x => card(x.icone, x.nome, `${x.descricao} A partir de ${money(x.preco_peca)} por peça.`, '#solicitar?servico=' + x.id, 'Solicitar serviço')).join('')}</div></div>`);
+    <div class="grid g4">${s.map(x => card(x.icone, x.nome, `${x.descricao} A partir de ${money(x.preco_peca)} por peça.`, user?.perfil === 'admin' ? '' : '#solicitar?servico=' + x.id, 'Solicitar serviço')).join('')}</div></div>`);
 }
 
 function vSobre({ draw }) {
@@ -313,6 +313,7 @@ function vNovaSenha({ draw }) {
 /* DFD 2.0 Registrar Pedidos — regra do projeto: cada pedido tem UM serviço (tipo de lavagem) e uma quantidade de peças */
 async function vSolicitar({ draw, need, live, params }) {
   if (!need()) return;
+  if (user.perfil === 'admin') { flash('Funcionários não fazem pedidos. Use o painel.', 'err'); return go('#admin'); }
   const servicos = await getServicos(); if (!live()) return;
   const sel = Number(params.get('servico') || 0);
   draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Novo pedido</div><h1>Solicitar serviço</h1></div>
@@ -342,6 +343,7 @@ async function vSolicitar({ draw, need, live, params }) {
 /* DFD 5.0 Realizar Agendamentos — a duração (tempo_base + peças × tempo_por_peça) é calculada aqui, junto da escolha do horário */
 async function vAgendar({ draw, need, live, params }) {
   if (!need()) return;
+  if (user.perfil === 'admin') { flash('Funcionários não fazem pedidos. Use o painel.', 'err'); return go('#admin'); }
   const id = Number(params.get('pedido') || 0);
   const re = params.get('reagendar') === '1';
   const [{ data: p }, { data: pf }, { data: cur }] = await Promise.all([
@@ -383,8 +385,8 @@ async function vAgendar({ draw, need, live, params }) {
         </div>
       </fieldset>
       <label for="pg">Forma de pagamento</label>
-      <select id="pg">${Object.entries(PAGTO).map(([k, t]) => `<option value="${k}" ${(src.forma_pagamento || 'pix') === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
-      <p class="note">O pagamento é feito na entrega ou na retirada das peças, na forma escolhida.</p>
+      <select id="pg" ${re && p.pago ? 'disabled' : ''}>${Object.entries(PAGTO).map(([k, t]) => `<option value="${k}" ${(src.forma_pagamento || 'pix') === k ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <p class="note">${re && p.pago ? 'Este pedido já foi pago, então a forma de pagamento não pode mais ser alterada.' : 'O pagamento é feito na entrega ou na retirada das peças, na forma escolhida.'}</p>
       <div class="resumo" id="fr" hidden></div>
       <label for="dt">${re ? 'Nova data' : 'Data'}</label><input id="dt" type="date" min="${hoje()}" required>
       <label>Horários</label><div id="slots"><p class="note">Escolha uma data para consultar os horários disponíveis.</p></div>
@@ -464,9 +466,13 @@ async function vAgendar({ draw, need, live, params }) {
       ? await sb.rpc('reagendar_pedido', { p_pedido: p.id, p_data: $('dt').value, p_horario: h, p_tipo: $('tipo').value, p_dados: { ...end, telefone: tel } })
       : await sb.from('agendamentos').insert({ pedido_id: p.id, cliente_id: user.id, tipo: $('tipo').value, data_agendada: $('dt').value, horario: h, telefone: tel, forma_pagamento: $('pg').value, ...end });
     if (error) { falha(/lotado|indispon/i.test(error.message) ? 'Esse horário não está mais disponível. Escolha outro.' : (re ? 'Não foi possível reagendar: ' : 'Não foi possível agendar: ') + error.message); carregar(); return; }
-    if (re) await sb.from('agendamentos').update({ forma_pagamento: $('pg').value }).eq('pedido_id', p.id);   // reagendamento: atualiza a forma de pagamento
+    let avisoPg = '';
+    if (re && !p.pago) {   // reagendamento: atualiza a forma de pagamento (função do banco, pois o cliente não edita agendamentos direto)
+      const { error: e2 } = await sb.rpc('alterar_forma_pagamento', { p_pedido: p.id, p_forma: $('pg').value });
+      if (e2) avisoPg = ' Atenção: não foi possível alterar a forma de pagamento (' + e2.message + ').';
+    }
     await sb.from('clientes').update({ ...end, telefone: tel }).eq('id', user.id);   // guarda no perfil (se não der, o agendamento já está salvo)
-    flash(re ? `Pedido reagendado para ${dataBR($('dt').value)} às ${h}.` : `Agendamento confirmado para ${dataBR($('dt').value)} às ${h}. Obrigado!${$('pg').value === 'pix' && PIX_CHAVE ? ' Chave Pix: ' + PIX_CHAVE + '.' : ''}`); go('#pedidos');
+    flash(re ? `Pedido reagendado para ${dataBR($('dt').value)} às ${h}.${avisoPg}` : `Agendamento confirmado para ${dataBR($('dt').value)} às ${h}. Obrigado!${$('pg').value === 'pix' && PIX_CHAVE ? ' Chave Pix: ' + PIX_CHAVE + '.' : ''}`); go('#pedidos');
   });
 }
 
@@ -475,7 +481,7 @@ async function vHorarios({ draw, live }) {
   draw(`<div class="wrap page"><div class="head"><div class="eyebrow">Agenda</div><h1>Consultar horários</h1>
     <p style="margin:0;max-width:640px">Escolha uma data e veja os horários disponíveis para coleta ou entrega. Atendemos de segunda a sexta, das 8h às 17h, e aos sábados, das 8h às 12h.</p></div>
     <div class="card form"><label for="dt">Data</label><input id="dt" type="date" min="${hoje()}" value="${hoje()}"><div id="slots"></div>
-    <a class="btn fit" href="${user ? '#solicitar' : '#login'}">${user ? 'Fazer um pedido' : 'Entrar para agendar'}</a></div></div>`);
+    <a class="btn fit" href="${!user ? '#login' : user.perfil === 'admin' ? '#admin' : '#solicitar'}">${!user ? 'Entrar para agendar' : user.perfil === 'admin' ? 'Ir ao painel' : 'Fazer um pedido'}</a></div></div>`);
   const mostrar = async () => {
     const d = $('dt').value;
     if (!d || d < hoje()) { $('slots').innerHTML = '<p class="note">Escolha uma data a partir de hoje.</p>'; return; }

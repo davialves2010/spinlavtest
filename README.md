@@ -28,6 +28,7 @@ O banco de dados **não é ator**: é parte do sistema (Supabase, acessado pela 
 | LE005 | Cliente solicita agendamento | `#agendar` |
 | LE006 | Cliente consulta seus pedidos e agendamentos | `#pedidos` |
 | LE007 | Funcionário consulta agendamentos e pedidos | painel (`#admin`) |
+| LE008 | Funcionário gerencia os serviços e tipos de lavagem | painel → aba Serviços |
 
 A **duração** não é evento: é regra interna do agendamento (`tempo_base + peças × tempo_por_peça`, calculada pelo gatilho do banco e exibida em `#agendar`). Ao escolher o horário, o site mostra a **previsão de conclusão**: início + duração, contando só o expediente (seg–sex 8h–17h, sáb 8h–12h, domingo fechado).
 
@@ -45,6 +46,7 @@ Entidades externas: **Cliente** e **Funcionário**.
 
 ## Regras de negócio
 - **Pedido × serviço × agendamento:** o *serviço* é o catálogo (tipo de lavagem, com preço e tempos); o *pedido* é a solicitação de um cliente para um serviço com N peças; o *agendamento* é a data, o horário e a **modalidade** (coleta em casa ou levar à lavanderia) do pedido.
+- **Funcionário não faz pedidos:** só clientes registram pedidos e agendam (site e banco). O funcionário usa o painel.
 - **Um pedido tem um serviço.** Para lavar com outro tipo de lavagem, o cliente faz outro pedido.
 - **Conflito de horário:** até 3 pedidos por horário e respeito aos bloqueios, validado no banco.
 - **Valor e tempo congelados:** `valor_estimado` e `tempo_estimado_min` são gravados no pedido pelo gatilho; mudar o preço do serviço depois não altera pedidos antigos.
@@ -56,7 +58,7 @@ O cliente usa o site instalado como app (PWA) no celular; o funcionário usa o p
 
 ## 1) Supabase
 1. Crie um projeto em https://supabase.com.
-2. **SQL Editor** → rode, nesta ordem: `supabase/schema.sql`, `supabase/seguranca-admin.sql`, os SQLs de frete/pagamento que você já usa **`supabase/funcionario-servicos-clientes.sql`** e `supabase/documentar-colunas.sql`.
+2. **SQL Editor** → rode, nesta ordem: `supabase/schema.sql`, `supabase/seguranca-admin.sql`, os SQLs de frete/pagamento que você já usa **`supabase/funcionario-servicos-clientes.sql`** `supabase/documentar-colunas.sql` e `supabase/correcoes-reagendar-e-funcionario.sql`.
 3. **Project Settings → API**: copie a Project URL e a anon key para `assets/config.js`.
 4. Para testar rápido: **Authentication → Providers → Email** → desative "Confirm email" (em produção, deixe ligado — veja `SEGURANCA.md`).
 
