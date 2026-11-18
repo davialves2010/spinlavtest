@@ -34,10 +34,10 @@ const I = {
 };
 const ICONES_SERVICO = { wash: 'Máquina de lavar', dry: 'Secagem', iron: 'Passadoria', shirt: 'Camisa' };
 const IMG_SERV = {
-  wash: 'assets/img/servicos/wash.jpg',
-  dry: 'assets/img/servicos/dry.jpg',
-  iron: 'assets/img/servicos/iron.jpg',
-  shirt: 'assets/img/servicos/shirt.jpg'
+  wash: 'img/lavagem.jpg',
+  dry: 'img/secagem.jpg',
+  iron: 'img/secadoria.jpg',
+  shirt: 'img/delicadas.jpg'
 };
 const card = (ic, t, d, href, label = 'Saiba mais') => {
   const foto = IMG_SERV[ic];
@@ -129,7 +129,7 @@ function ligarGoogle() {
     if (error) { $('err').textContent = 'Não foi possível entrar com o Google. Tente novamente.'; $('err').hidden = false; }
   });
 }
-const SIDE = t => `<div class="side"><img src="assets/img/logo.jpg" alt="Logo SpinLav"><h2>Uma rotina mais leve começa aqui.</h2><p style="margin:0">${t}</p></div>`;
+const SIDE = t => `<div class="side">< src="assets//logo.jpg" alt="Logo SpinLav"><h2>Uma rotina mais leve começa aqui.</h2><p style="margin:0">${t}</p></div>`;
 const aviso = (m, href, label) => `<div class="wrap page"><div class="card vazio"><p>${m}</p><a class="btn" href="${href}">${label}</a></div></div>`;
 
 async function vInicio({ draw }) {
@@ -138,7 +138,7 @@ async function vInicio({ draw }) {
     <div><div class="eyebrow">Bem-vindo à SpinLav</div><h1>Suas roupas limpas, sua rotina mais leve</h1>
     <p>A SpinLav oferece serviços de lavanderia com cuidado, praticidade e confiança para deixar mais tempo livre na sua rotina.</p>
     <div class="btns"><a class="btn" href="#servicos">Conheça nossos serviços</a><a class="btn o" href="#sobre">Sobre a SpinLav</a></div></div>
-    <div class="pic"><img class="ph" style="object-fit:cover;display:block" src="assets/img/toalhas.svg" alt="Toalhas limpas e dobradas"><div class="seal"><img src="assets/img/logo.jpg" alt="Logo SpinLav"></div></div>
+    <div class="pic">< class="ph" style="object-fit:cover;display:block" src="assets//toalhas.svg" alt="Toalhas limpas e dobradas"><div class="seal"><img src="assets/img/logo.jpg" alt="Logo SpinLav"></div></div>
   </div></section>
   <section class="sec" style="background:var(--pale)"><div class="wrap"><h2>Um cuidado que cabe na sua rotina</h2><p class="sub"></p><div class="grid g3">
     ${card('clock', 'Mais tempo livre', 'Deixe a lavagem com a gente e use seu tempo no que importa.')}
@@ -164,7 +164,7 @@ function vSobre({ draw }) {
     <div class="txt"><div class="eyebrow">Sobre nós</div><h1>Cuidar das suas roupas é cuidar do seu tempo</h1>
     <p>A SpinLav é uma lavanderia profissional criada para oferecer praticidade e confiança no tratamento das roupas. Nossa proposta é tornar essa parte da rotina mais simples e atenciosa.</p>
     <div class="seal"><img src="assets/img/logo.jpg" alt="Logo SpinLav"></div></div>
-    <div class="pic"><img class="ph" style="object-fit:cover;display:block" src="assets/img/sobre.jpg" alt="Profissional trabalhando na lavanderia"></div>
+    <div class="pic"><img class="ph" style="object-fit:cover;display:block" src="img/sobre.jpg" alt="Profissional trabalhando na lavanderia"></div>
   </div></section>
   <section class="about-cards"><div class="wrap"><div class="grid g3">
     ${card('target', 'Missão', 'Facilitar a rotina das pessoas com serviços de lavanderia práticos, cuidadosos e confiáveis.')}
