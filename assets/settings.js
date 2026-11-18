@@ -1,28 +1,46 @@
-/* SpinLav — botão flutuante de configurações (tema, texto, contraste, animações, app) */
+// botao flutuante de configuracoes: tema, tamanho do texto, contraste, animacoes e instalar o app
 (() => {
-  const KEY = 'spinlav:prefs';
-  const DEF = { tema: 'auto', texto: 1, contraste: false, reduzir: false };
-  const root = document.documentElement;
-  const mq = matchMedia('(prefers-color-scheme: dark)');
+  const CHAVE = 'spinlav:prefs';
+  const PADRAO = { tema: 'auto', texto: 1, contraste: false, reduzir: false };
+  const raiz = document.documentElement;
+  const temaEscuroDoSistema = matchMedia('(prefers-color-scheme: dark)');
 
-  const load = () => { try { return { ...DEF, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...DEF }; } };
-  const save = p => { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch {} };
-  let prefs = load();
-
-  /* ---------- aplicar preferências ---------- */
-  function apply() {
-    if (prefs.tema === 'claro') root.dataset.theme = 'light';
-    else if (prefs.tema === 'escuro') root.dataset.theme = 'dark';
-    else delete root.dataset.theme;
-    prefs.contraste ? root.dataset.contrast = 'alto' : delete root.dataset.contrast;
-    prefs.reduzir ? root.dataset.motion = 'off' : delete root.dataset.motion;
-    root.style.setProperty('--cfg-zoom', prefs.texto);
-    const escuro = prefs.tema === 'escuro' || (prefs.tema === 'auto' && mq.matches);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', escuro ? '#0f1c2e' : '#ffffff');
+  function carregar() {
+    try {
+      return { ...PADRAO, ...JSON.parse(localStorage.getItem(CHAVE) || '{}') };
+    } catch {
+      return { ...PADRAO };
+    }
   }
-  mq.addEventListener?.('change', apply);
 
-  /* ---------- estilos ---------- */
+  function salvar(prefs) {
+    try {
+      localStorage.setItem(CHAVE, JSON.stringify(prefs));
+    } catch {}
+  }
+
+  let prefs = carregar();
+
+  function aplicar() {
+    if (prefs.tema === 'claro') raiz.dataset.theme = 'light';
+    else if (prefs.tema === 'escuro') raiz.dataset.theme = 'dark';
+    else delete raiz.dataset.theme;
+
+    if (prefs.contraste) raiz.dataset.contrast = 'alto';
+    else delete raiz.dataset.contrast;
+
+    if (prefs.reduzir) raiz.dataset.motion = 'off';
+    else delete raiz.dataset.motion;
+
+    raiz.style.setProperty('--cfg-zoom', prefs.texto);
+
+    const escuro = prefs.tema === 'escuro' || (prefs.tema === 'auto' && temaEscuroDoSistema.matches);
+    document.querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', escuro ? '#0f1c2e' : '#ffffff');
+  }
+
+  temaEscuroDoSistema.addEventListener?.('change', aplicar);
+
   const css = `
 #hdr,#flash,#app,#ftr{zoom:var(--cfg-zoom,1)}
 :root[data-motion="off"] *,:root[data-motion="off"] *::before,:root[data-motion="off"] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
@@ -58,81 +76,159 @@ html:root[data-contrast="alto"] a:not(.btn){text-decoration:underline}
   .cfg-panel{left:12px;right:12px;width:auto;top:auto;bottom:12px;transform:none;max-height:78vh;animation-name:cfgUp}
   @keyframes cfgUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 }`;
-  const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+  const estilo = document.createElement('style');
+  estilo.textContent = css;
+  document.head.appendChild(estilo);
 
-  /* ---------- interface ---------- */
-  const GEAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
-  const isiOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const ICONE_ENGRENAGEM = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
+  const ehIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const jaInstalado = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
-  const fab = document.createElement('button');
-  fab.className = 'cfg-fab'; fab.type = 'button'; fab.innerHTML = GEAR;
-  fab.setAttribute('aria-label', 'Abrir configurações'); fab.setAttribute('aria-expanded', 'false'); fab.setAttribute('aria-controls', 'cfg-panel');
+  const botao = document.createElement('button');
+  botao.className = 'cfg-fab';
+  botao.type = 'button';
+  botao.innerHTML = ICONE_ENGRENAGEM;
+  botao.setAttribute('aria-label', 'Abrir configurações');
+  botao.setAttribute('aria-expanded', 'false');
+  botao.setAttribute('aria-controls', 'cfg-panel');
 
-  const back = document.createElement('div'); back.className = 'cfg-back'; back.hidden = true;
-  const panel = document.createElement('div');
-  panel.className = 'cfg-panel'; panel.id = 'cfg-panel'; panel.hidden = true;
-  panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Configurações do site');
+  const fundo = document.createElement('div');
+  fundo.className = 'cfg-back';
+  fundo.hidden = true;
 
-  const seg = (name, opts) => `<div class="cfg-seg" role="group" data-seg="${name}">${opts.map(([v, t]) => `<button type="button" data-v="${v}">${t}</button>`).join('')}</div>`;
-  const sw = (name, titulo, desc) => `<div class="cfg-row"><div><span class="cfg-lbl" style="margin:0">${titulo}</span><small>${desc}</small></div><button type="button" class="cfg-sw" role="switch" data-sw="${name}" aria-label="${titulo}"></button></div>`;
+  const painel = document.createElement('div');
+  painel.className = 'cfg-panel';
+  painel.id = 'cfg-panel';
+  painel.hidden = true;
+  painel.setAttribute('role', 'dialog');
+  painel.setAttribute('aria-label', 'Configurações do site');
 
-  panel.innerHTML = `<h2>Configurações</h2>
-    <div class="cfg-sec"><span class="cfg-lbl">Aparência</span>${seg('tema', [['claro', '☀️ Claro'], ['escuro', '🌙 Escuro'], ['auto', 'Auto']])}</div>
-    <div class="cfg-sec"><span class="cfg-lbl">Tamanho do texto</span>${seg('texto', [['1', 'A'], ['1.1', 'A+'], ['1.2', 'A++']])}</div>
-    <div class="cfg-sec">${sw('contraste', 'Alto contraste', 'Bordas e textos mais marcados')}</div>
-    <div class="cfg-sec">${sw('reduzir', 'Reduzir animações', 'Menos movimento nas telas')}</div>
+  function grupoDeBotoes(nome, opcoes) {
+    const itens = opcoes.map(([valor, texto]) => `<button type="button" data-v="${valor}">${texto}</button>`).join('');
+    return `<div class="cfg-seg" role="group" data-seg="${nome}">${itens}</div>`;
+  }
+
+  function interruptor(nome, titulo, descricao) {
+    return `<div class="cfg-row"><div><span class="cfg-lbl" style="margin:0">${titulo}</span><small>${descricao}</small></div>
+      <button type="button" class="cfg-sw" role="switch" data-sw="${nome}" aria-label="${titulo}"></button></div>`;
+  }
+
+  painel.innerHTML = `<h2>Configurações</h2>
+    <div class="cfg-sec"><span class="cfg-lbl">Aparência</span>${grupoDeBotoes('tema', [['claro', 'Claro'], ['escuro', 'Escuro'], ['auto', 'Auto']])}</div>
+    <div class="cfg-sec"><span class="cfg-lbl">Tamanho do texto</span>${grupoDeBotoes('texto', [['1', 'A'], ['1.1', 'A+'], ['1.2', 'A++']])}</div>
+    <div class="cfg-sec">${interruptor('contraste', 'Alto contraste', 'Bordas e textos mais marcados')}</div>
+    <div class="cfg-sec">${interruptor('reduzir', 'Reduzir animações', 'Menos movimento nas telas')}</div>
     <div class="cfg-sec" id="cfg-app"></div>
-    <div class="cfg-sec"><button type="button" class="cfg-act" id="cfg-upd">Buscar atualização do site</button><button type="button" class="cfg-act" id="cfg-rst">Restaurar padrões</button></div>`;
+    <div class="cfg-sec">
+      <button type="button" class="cfg-act" id="cfg-upd">Buscar atualização do site</button>
+      <button type="button" class="cfg-act" id="cfg-rst">Restaurar padrões</button>
+    </div>`;
 
-  document.body.append(back, fab, panel);
+  document.body.append(fundo, botao, painel);
 
-  function sync() {
-    panel.querySelectorAll('[data-seg="tema"] button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === prefs.tema)));
-    panel.querySelectorAll('[data-seg="texto"] button').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === Number(prefs.texto))));
-    panel.querySelector('[data-sw="contraste"]').setAttribute('aria-checked', String(prefs.contraste));
-    panel.querySelector('[data-sw="reduzir"]').setAttribute('aria-checked', String(prefs.reduzir));
+  // marca no painel o que esta selecionado
+  function atualizarPainel() {
+    painel.querySelectorAll('[data-seg="tema"] button').forEach(b => {
+      b.setAttribute('aria-pressed', String(b.dataset.v === prefs.tema));
+    });
+    painel.querySelectorAll('[data-seg="texto"] button').forEach(b => {
+      b.setAttribute('aria-pressed', String(Number(b.dataset.v) === Number(prefs.texto)));
+    });
+    painel.querySelector('[data-sw="contraste"]').setAttribute('aria-checked', String(prefs.contraste));
+    painel.querySelector('[data-sw="reduzir"]').setAttribute('aria-checked', String(prefs.reduzir));
   }
-  function appSec() {
-    const box = panel.querySelector('#cfg-app');
-    if (standalone()) { box.hidden = true; return; }
-    const pwa = window.spinlavPWA;
-    if (pwa?.podeInstalar()) { box.hidden = false; box.innerHTML = '<span class="cfg-lbl">Aplicativo</span><button type="button" class="cfg-act main" id="cfg-inst">Instalar app no dispositivo</button>'; }
-    else if (isiOS) { box.hidden = false; box.innerHTML = '<span class="cfg-lbl">Aplicativo</span><p class="cfg-hint">No iPhone: toque em <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>.</p>'; }
-    else box.hidden = true;
-  }
-  const set = (k, v) => { prefs[k] = v; save(prefs); apply(); sync(); };
 
-  panel.addEventListener('click', async ev => {
-    const b = ev.target.closest('button'); if (!b) return;
-    const g = b.closest('[data-seg]')?.dataset.seg;
-    if (g === 'tema') return set('tema', b.dataset.v);
-    if (g === 'texto') return set('texto', Number(b.dataset.v));
-    const s = b.dataset.sw;
-    if (s) return set(s, !prefs[s]);
-    if (b.id === 'cfg-inst') { await window.spinlavPWA?.instalar(); appSec(); }
-    if (b.id === 'cfg-rst') { prefs = { ...DEF }; save(prefs); apply(); sync(); }
-    if (b.id === 'cfg-upd') {
-      b.disabled = true; b.textContent = 'Atualizando…';
+  // secao de instalar o app (some se ja estiver instalado)
+  function atualizarSecaoApp() {
+    const caixa = painel.querySelector('#cfg-app');
+    if (jaInstalado()) {
+      caixa.hidden = true;
+      return;
+    }
+
+    if (window.spinlavPWA?.podeInstalar()) {
+      caixa.hidden = false;
+      caixa.innerHTML = '<span class="cfg-lbl">Aplicativo</span><button type="button" class="cfg-act main" id="cfg-inst">Instalar app no dispositivo</button>';
+    } else if (ehIOS) {
+      caixa.hidden = false;
+      caixa.innerHTML = '<span class="cfg-lbl">Aplicativo</span><p class="cfg-hint">No iPhone: toque em <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>.</p>';
+    } else {
+      caixa.hidden = true;
+    }
+  }
+
+  function mudar(chave, valor) {
+    prefs[chave] = valor;
+    salvar(prefs);
+    aplicar();
+    atualizarPainel();
+  }
+
+  painel.addEventListener('click', async ev => {
+    const alvo = ev.target.closest('button');
+    if (!alvo) return;
+
+    const grupo = alvo.closest('[data-seg]')?.dataset.seg;
+    if (grupo === 'tema') return mudar('tema', alvo.dataset.v);
+    if (grupo === 'texto') return mudar('texto', Number(alvo.dataset.v));
+
+    const interruptorNome = alvo.dataset.sw;
+    if (interruptorNome) return mudar(interruptorNome, !prefs[interruptorNome]);
+
+    if (alvo.id === 'cfg-inst') {
+      await window.spinlavPWA?.instalar();
+      atualizarSecaoApp();
+    }
+
+    if (alvo.id === 'cfg-rst') {
+      prefs = { ...PADRAO };
+      salvar(prefs);
+      aplicar();
+      atualizarPainel();
+    }
+
+    // apaga o service worker e o cache pra buscar a versao nova do site
+    if (alvo.id === 'cfg-upd') {
+      alvo.disabled = true;
+      alvo.textContent = 'Atualizando...';
       try {
-        const regs = await navigator.serviceWorker?.getRegistrations?.() || [];
-        await Promise.all(regs.map(r => r.unregister()));
-        if (window.caches) await Promise.all((await caches.keys()).map(k => caches.delete(k)));
+        const registros = await navigator.serviceWorker?.getRegistrations?.() || [];
+        await Promise.all(registros.map(r => r.unregister()));
+        if (window.caches) {
+          const chaves = await caches.keys();
+          await Promise.all(chaves.map(c => caches.delete(c)));
+        }
       } catch {}
       location.reload();
     }
   });
 
-  function abrir(o) {
-    panel.hidden = back.hidden = !o;
-    fab.setAttribute('aria-expanded', String(o));
-    fab.setAttribute('aria-label', o ? 'Fechar configurações' : 'Abrir configurações');
-    if (o) { appSec(); sync(); panel.querySelector('[data-seg="tema"] button[aria-pressed="true"]')?.focus(); }
+  function abrir(aberto) {
+    painel.hidden = !aberto;
+    fundo.hidden = !aberto;
+    botao.setAttribute('aria-expanded', String(aberto));
+    botao.setAttribute('aria-label', aberto ? 'Fechar configurações' : 'Abrir configurações');
+    if (aberto) {
+      atualizarSecaoApp();
+      atualizarPainel();
+      painel.querySelector('[data-seg="tema"] button[aria-pressed="true"]')?.focus();
+    }
   }
-  fab.addEventListener('click', () => abrir(panel.hidden));
-  back.addEventListener('click', () => abrir(false));
-  addEventListener('keydown', ev => { if (ev.key === 'Escape' && !panel.hidden) { abrir(false); fab.focus(); } });
-  addEventListener('spinlav:pwa', () => { if (!panel.hidden) appSec(); });
 
-  apply(); sync();
+  botao.addEventListener('click', () => abrir(painel.hidden));
+  fundo.addEventListener('click', () => abrir(false));
+
+  window.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && !painel.hidden) {
+      abrir(false);
+      botao.focus();
+    }
+  });
+
+  window.addEventListener('spinlav:pwa', () => {
+    if (!painel.hidden) atualizarSecaoApp();
+  });
+
+  aplicar();
+  atualizarPainel();
 })();

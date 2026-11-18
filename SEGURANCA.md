@@ -1,44 +1,43 @@
-# SpinLav — checklist de segurança
+# Segurança do SpinLav
 
-## No Supabase (configuração, sem código)
-1. **Authentication → Providers → Email → "Confirm email" LIGADO.** Evita contas com e-mail de terceiros.
-2. **Authentication → URL Configuration:** Site URL e Redirect URLs com o endereço do site.
-3. **Authentication → Multi-Factor (ou Sign In / Providers → MFA):** confirme que o **TOTP** está ativado.
-4. Não compartilhe a `service_role key` (só a `anon/publishable key` vai no `config.js`).
+## Configurar no Supabase
+1. Authentication > Providers > Email: deixar "Confirm email" ligado, pra ninguém criar conta com e-mail dos outros.
+2. Authentication > URL Configuration: colocar o endereço do site em Site URL e Redirect URLs.
+3. Confirmar que o MFA do tipo TOTP está ativado.
+4. Nunca colocar a `service_role key` no site. No `config.js` vai só a anon (publishable) key.
 
-## Ordem para ativar
-1. Rode `supabase/seguranca-admin.sql` e depois `supabase/funcionario-servicos-clientes.sql` no SQL Editor e faça o deploy do site.
-2. Entre no painel: o site pedirá para cadastrar o app autenticador (Google Authenticator, Authy, etc.). Escaneie o QR Code e digite o código.
-3. Saia, entre de novo e confirme que o painel abre pedindo o código.
-4. **Só então** ligue a exigência no banco:
+## Ordem pra ativar o MFA do painel
+1. Rodar `supabase/seguranca-admin.sql` e depois `supabase/funcionario-servicos-clientes.sql` no SQL Editor e fazer o deploy.
+2. Entrar no painel. O site pede pra cadastrar um app autenticador (Google Authenticator, Authy...). Escanear o QR Code e digitar o código.
+3. Sair, entrar de novo e ver se o painel pede o código.
+4. Só depois ligar a exigência no banco:
    `update public.config_seguranca set valor = true where chave = 'mfa_admin';`
-   Em emergência, desligue com `valor = false`.
+   Se der problema, desligar com `valor = false`.
 
 ## Papéis
-- **Cliente:** vê e mexe só nos próprios pedidos.
-- **Funcionário** (`perfil = 'admin'` no banco): opera agenda, pedidos, serviços, bloqueios e frete; consulta clientes (somente leitura).
-- **Dono:** tudo do funcionário + aba **Equipe** (promover/remover funcionários) + aba **Registro**.
-  Para mudar quem é dono, use o SQL Editor: `update public.clientes set dono = true where email = '...';`
+- **Cliente**: só vê e mexe nos próprios pedidos.
+- **Funcionário** (`perfil = 'admin'`): cuida da agenda, pedidos, serviços, bloqueios e frete. Consulta clientes só pra leitura.
+- **Dono**: faz tudo que o funcionário faz, mais a aba Equipe (promover e remover funcionários) e a aba Registro. Pra mudar quem é o dono: `update public.clientes set dono = true where email = '...';`
 
-## Tabela de permissões (quem pode ver ou alterar o quê)
-| Informação / ação | Cliente | Funcionário | Dono |
+## Quem pode o quê
+| Ação | Cliente | Funcionário | Dono |
 |---|---|---|---|
-| Ver catálogo de serviços ativos | ✔ | ✔ | ✔ |
-| Criar/editar serviços, preços e tempos; ativar/desativar | — | ✔ | ✔ |
-| Cadastrar-se e editar o próprio perfil | ✔ | ✔ | ✔ |
-| Ver lista de clientes (nome, e-mail, telefone, nº de pedidos) | — | ✔ (leitura) | ✔ (leitura) |
-| Registrar pedido e agendar | só em nome próprio | — | — |
-| Ver/cancelar/reagendar pedidos | só os próprios | — | — |
-| Ver todos os pedidos e a agenda | — | ✔ | ✔ |
-| Alterar status do pedido e marcar pago | — | ✔ | ✔ |
-| Consultar horários disponíveis | ✔ | ✔ | ✔ |
-| Bloquear datas/horários e definir frete | — | ✔ | ✔ |
-| Promover ou remover funcionários | — | — | ✔ |
-| Ver o Registro (auditoria) de ações | — | — | ✔ |
+| Ver serviços ativos | sim | sim | sim |
+| Criar e editar serviços, preços e tempos | não | sim | sim |
+| Cadastrar-se e editar o próprio perfil | sim | sim | sim |
+| Ver a lista de clientes (só leitura) | não | sim | sim |
+| Registrar pedido e agendar | só o seu | não | não |
+| Ver, cancelar e reagendar pedidos | só os seus | não | não |
+| Ver todos os pedidos e a agenda | não | sim | sim |
+| Mudar status e marcar como pago | não | sim | sim |
+| Consultar horários | sim | sim | sim |
+| Bloquear datas e definir frete | não | sim | sim |
+| Promover ou remover funcionários | não | não | sim |
+| Ver o Registro de ações | não | não | sim |
 
-Resposta para a banca — *“quem pode consultar ou alterar dados de outros clientes?”*: só funcionários e o dono, e isso é imposto **no banco** (RLS e funções `security definer`), não apenas escondendo botões no site. O funcionário consulta clientes em modo leitura; nenhuma tela permite alterar o cadastro de outro cliente.
+Se perguntarem quem pode ver ou alterar dados de outros clientes: só funcionário e dono, e isso é garantido no banco (RLS e funções `security definer`), não só escondendo botão no site. O funcionário só consulta, nenhuma tela deixa ele alterar o cadastro de outro cliente.
 
-## Se uma conta de funcionário for comprometida
+## Se uma conta de funcionário for invadida
 1. `update public.clientes set perfil = 'cliente', dono = false where email = '...';`
-2. Supabase → Authentication → Users → bloquear/excluir o usuário (isso derruba as sessões).
-3. Consulte a aba **Registro** para ver o que foi feito.
+2. No Supabase, Authentication > Users, bloquear ou excluir o usuário (isso derruba as sessões).
+3. Olhar a aba Registro pra ver o que foi feito.

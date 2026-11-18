@@ -1,76 +1,86 @@
-/* SpinLav — service worker
-   - Arquivos do site: rede primeiro (sempre pega a versão nova), cache como reserva offline.
-   - Fontes e supabase-js (CDN): cache com atualização em segundo plano.
-   - Supabase (API/login): nunca passa pelo cache. */
-const VERSION = 'spinlav-v5';
-const SHELL = [
-  '/',
-  '/index.html',
-  '/assets/style.css',
-  '/assets/spa.js',
-  '/assets/config.js',
-  '/assets/img/logo.jpg',
-  '/assets/img/toalhas.svg',
-  '/img/sobre.jpg',
-  '/img/lavagem.jpg',
-  '/img/secagem.jpg',
-  '/img/secadoria.jpg',
-  '/img/delicadas.jpg',
-  '/assets/pwa.js',
-  '/assets/settings.js',
-  '/assets/icons/icon-192.png',
-  '/assets/icons/icon-512.png',
+// service worker do SpinLav
+// arquivos do site: rede primeiro, cache so se estiver offline
+// fontes e supabase-js (cdn): cache com atualizacao por tras
+// supabase (api e login): nunca passa pelo cache
+const VERSAO = 'spinlav-v3';
+
+const ARQUIVOS = [
+  '/', '/index.html',
+  '/assets/style.css', '/assets/spa.js', '/assets/config.js', '/assets/negocio.js',
+  '/assets/util.js', '/assets/supabase.js', '/assets/estado.js', '/assets/navegacao.js',
+  '/assets/layout.js', '/assets/router.js', '/assets/disponibilidade.js',
+  '/assets/views/comum.js', '/assets/views/publico.js', '/assets/views/conta.js', '/assets/views/pedidos.js',
+  '/assets/views/admin/index.js', '/assets/views/admin/comum.js', '/assets/views/admin/mfa.js',
+  '/assets/views/admin/agenda.js', '/assets/views/admin/pedidos.js', '/assets/views/admin/clientes.js',
+  '/assets/views/admin/servicos.js', '/assets/views/admin/frete.js', '/assets/views/admin/bloqueios.js',
+  '/assets/views/admin/equipe.js', '/assets/views/admin/registro.js',
+  '/assets/pwa.js', '/assets/settings.js',
+  '/assets/img/logo.jpg', '/assets/img/toalhas.svg', '/assets/img/sobre.jpg',
+  '/assets/icons/icon-192.png', '/assets/icons/icon-512.png',
   '/manifest.webmanifest'
 ];
 
+const EXTERNOS = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+
 self.addEventListener('install', ev => {
   ev.waitUntil(
-    caches.open(VERSION).then(c => Promise.allSettled(SHELL.map(u => c.add(u)))).then(() => self.skipWaiting())
+    caches.open(VERSAO)
+      .then(cache => Promise.allSettled(ARQUIVOS.map(url => cache.add(url))))
+      .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', ev => {
   ev.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k))))
+      .then(chaves => Promise.all(
+        chaves.filter(c => c !== VERSAO).map(c => caches.delete(c))
+      ))
       .then(() => self.clients.claim())
   );
 });
 
-const CDN = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
-
 self.addEventListener('fetch', ev => {
   const req = ev.request;
   if (req.method !== 'GET') return;
+
   const url = new URL(req.url);
+  const mesmoSite = url.origin === location.origin;
 
-  // Supabase e qualquer outro domínio desconhecido: direto na rede
-  if (url.origin !== location.origin && !CDN.includes(url.hostname)) return;
+  // supabase e outros dominios vao direto pra rede
+  if (!mesmoSite && !EXTERNOS.includes(url.hostname)) return;
 
-  // CDN/fontes: usa o cache e atualiza em segundo plano
-  if (url.origin !== location.origin) {
+  if (!mesmoSite) {
     ev.respondWith(
-      caches.open(VERSION).then(async c => {
-        const hit = await c.match(req);
-        const net = fetch(req).then(r => { if (r && (r.ok || r.type === 'opaque')) c.put(req, r.clone()); return r; }).catch(() => hit);
-        return hit || net;
+      caches.open(VERSAO).then(async cache => {
+        const guardado = await cache.match(req);
+        const rede = fetch(req)
+          .then(res => {
+            if (res.ok || res.type === 'opaque') cache.put(req, res.clone());
+            return res;
+          })
+          .catch(() => guardado);
+        return guardado || rede;
       })
     );
     return;
   }
 
-  // Páginas (navegação): rede primeiro; offline cai no index.html
+  // navegacao: se estiver offline cai no index
   if (req.mode === 'navigate') {
-    ev.respondWith(
-      fetch(req).catch(() => caches.match('/index.html').then(r => r || caches.match('/')))
-    );
+    ev.respondWith(fetch(req).catch(() => caches.match('/index.html')));
     return;
   }
 
-  // Arquivos do próprio site: rede primeiro, cache como reserva
   ev.respondWith(
     fetch(req)
-      .then(r => { if (r.ok) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(req, copy)); } return r; })
+      .then(res => {
+        if (res.ok) {
+          const copia = res.clone();
+          caches.open(VERSAO).then(cache => cache.put(req, copia));
+        }
+        return res;
+      })
       .catch(() => caches.match(req))
   );
 });

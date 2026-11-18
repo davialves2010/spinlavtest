@@ -3,11 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="SpinLav — lavanderia profissional. Suas roupas limpas, sua rotina mais leve.">
-<title>SpinLav — lavanderia profissional</title>
+<meta name="description" content="SpinLav, lavanderia profissional. Suas roupas limpas, sua rotina mais leve.">
+<title>SpinLav - lavanderia profissional</title>
 
-<script>try{var p=JSON.parse(localStorage.getItem('spinlav:prefs')||'{}'),r=document.documentElement;if(p.tema==='claro')r.dataset.theme='light';else if(p.tema==='escuro')r.dataset.theme='dark';if(p.contraste)r.dataset.contrast='alto';if(p.reduzir)r.dataset.motion='off';if(p.texto)r.style.setProperty('--cfg-zoom',p.texto)}catch(e){}</script>
-<!-- PWA -->
+<script>
+  // aplica as preferencias salvas antes de desenhar a pagina (evita piscar o tema)
+  try {
+    var prefs = JSON.parse(localStorage.getItem('spinlav:prefs') || '{}');
+    var raiz = document.documentElement;
+    if (prefs.tema === 'claro') raiz.dataset.theme = 'light';
+    else if (prefs.tema === 'escuro') raiz.dataset.theme = 'dark';
+    if (prefs.contraste) raiz.dataset.contrast = 'alto';
+    if (prefs.reduzir) raiz.dataset.motion = 'off';
+    if (prefs.texto) raiz.style.setProperty('--cfg-zoom', prefs.texto);
+  } catch (e) {}
+</script>
+
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#1c3d73">
 <meta name="mobile-web-app-capable" content="yes">
@@ -17,24 +28,25 @@
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
 
-<!-- Compartilhamento (WhatsApp, redes sociais). Se o endereço do site mudar, atualize a URL abaixo. -->
+<!-- compartilhamento (whatsapp, redes). Se o endereco do site mudar, troque a url -->
 <meta property="og:type" content="website">
 <meta property="og:locale" content="pt_BR">
 <meta property="og:site_name" content="SpinLav">
-<meta property="og:title" content="SpinLav — lavanderia profissional">
+<meta property="og:title" content="SpinLav - lavanderia profissional">
 <meta property="og:description" content="Suas roupas limpas, sua rotina mais leve. Solicite o serviço e agende coleta ou retirada online.">
 <meta property="og:url" content="https://spinlav.vercel.app/">
 <meta property="og:image" content="https://spinlav.vercel.app/assets/img/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Poppins:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="assets/style.css">
 <link rel="modulepreload" href="assets/spa.js">
-<link rel="preload" as="image" href="assets/img/logo.jpg">
+<link rel="preload" as="image" href="assets/img/toalhas.svg">
 </head>
 <body>
 <header id="hdr"></header>

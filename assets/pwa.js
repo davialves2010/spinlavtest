@@ -1,21 +1,31 @@
-/* SpinLav — registro do service worker e instalação do app (o botão fica em Configurações) */
+// registra o service worker e guarda o evento de instalacao do app
 if ('serviceWorker' in navigator) {
-  addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(console.error));
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(console.error);
+  });
 }
 
-let evento = null;
+let promptInstalacao = null;
+
 window.spinlavPWA = {
-  podeInstalar: () => !!evento,
-  instalar: async () => {
-    if (!evento) return;
-    evento.prompt();
-    await evento.userChoice;
-    evento = null;
+  podeInstalar() {
+    return promptInstalacao !== null;
+  },
+  async instalar() {
+    if (!promptInstalacao) return;
+    promptInstalacao.prompt();
+    await promptInstalacao.userChoice;
+    promptInstalacao = null;
   }
 };
 
-addEventListener('beforeinstallprompt', ev => {
-  ev.preventDefault(); evento = ev;
-  dispatchEvent(new Event('spinlav:pwa'));
+window.addEventListener('beforeinstallprompt', ev => {
+  ev.preventDefault();
+  promptInstalacao = ev;
+  window.dispatchEvent(new Event('spinlav:pwa'));
 });
-addEventListener('appinstalled', () => { evento = null; dispatchEvent(new Event('spinlav:pwa')); });
+
+window.addEventListener('appinstalled', () => {
+  promptInstalacao = null;
+  window.dispatchEvent(new Event('spinlav:pwa'));
+});
