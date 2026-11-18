@@ -8,9 +8,9 @@ body{margin:0;font-family:'DM Sans',system-ui,sans-serif;font-size:17px;line-hei
 h1,h2,h3,.logo{font-family:'Poppins',system-ui,sans-serif;color:var(--ink);margin:0}
 header{background:var(--hdr);border-bottom:1px solid var(--line);position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
 .wrap{max-width:1200px;margin:0 auto;padding:0 28px}
-.bar{display:flex;align-items:center;justify-content:space-between;height:68px;gap:12px}
-.logo{display:flex;align-items:center;gap:12px;font-weight:600;font-size:18px;text-decoration:none}
-.logo img{width:42px;height:42px;border-radius:50%;object-fit:cover}
+.bar{display:flex;align-items:center;justify-content:space-between;height:84px;gap:12px}
+.logo{display:flex;align-items:center;gap:14px;font-weight:600;font-size:21px;text-decoration:none}
+.logo img{width:60px;height:60px;border-radius:50%;object-fit:cover}
 nav{display:flex;gap:28px;align-items:center}
 nav a{color:var(--ink);text-decoration:none;font-size:16px;padding:4px 0;border-bottom:2px solid transparent;transition:color .2s,border-color .2s}
 nav a:hover{color:var(--brand)}
@@ -130,7 +130,7 @@ img{max-width:100%}
 .acoes{display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:960px){.g3{grid-template-columns:repeat(2,1fr)}.g3>:last-child:nth-child(odd){grid-column:1/-1}}
 @media(max-width:820px){
-  header .bar{height:64px;padding-top:0;padding-bottom:0;flex-wrap:nowrap}
+  header .bar{height:76px;padding-top:0;padding-bottom:0;flex-wrap:nowrap}
   .menu{display:block}
   header nav{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;gap:0;background:var(--hdr);border-bottom:1px solid var(--line);padding:6px 20px 18px;box-shadow:var(--shadow)}
   header nav.open{display:flex}
