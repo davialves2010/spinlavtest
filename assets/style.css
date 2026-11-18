@@ -226,7 +226,7 @@ input[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:1
 
 /* ===== cards com foto ===== */
 .card.foto{padding:0;gap:0;overflow:hidden}
-.card.foto .thumb{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
+.card.foto .thumb{width:100%;height:auto;aspect-ratio:4/3;object-fit:cover;display:block;background:var(--mint)}
 .card.foto .corpo{padding:20px 22px 24px;display:flex;flex-direction:column;gap:12px;flex:1}
 .card.foto .corpo p{flex:1}
 
