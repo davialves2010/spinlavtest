@@ -69,7 +69,7 @@ export function telaSobre({ desenhar }) {
       <p>A SpinLav é uma lavanderia profissional criada para oferecer praticidade e confiança no tratamento das roupas. Nossa proposta é tornar essa parte da rotina mais simples e atenciosa.</p>
       <div class="seal"><img src="assets/img/logo.jpg" alt="Logo SpinLav"></div>
     </div>
-    <div class="pic"><img class="ph" style="object-fit:cover;display:block" src="assets/img/sobre.jpg" alt="Profissional trabalhando na lavanderia"></div>
+    <div class="pic"><img class="ph" style="object-fit:cover;display:block" src="img/sobre.jpg" alt="Profissional trabalhando na lavanderia"></div>
   </div></section>
 
   <section class="about-cards"><div class="wrap"><div class="grid g3">

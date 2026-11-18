@@ -24,10 +24,22 @@ export const ICONES_SERVICO = {
   shirt: 'Camisa'
 };
 
+// fotos dos servicos, ficam na pasta img/ da raiz do site
+export const FOTOS_SERVICO = {
+  wash: 'img/lavagem.jpg',
+  dry: 'img/secagem.jpg',
+  iron: 'img/secadoria.jpg',
+  shirt: 'img/delicadas.jpg'
+};
+
 export function cartao(icone, titulo, descricao, href, rotulo = 'Saiba mais') {
   const botao = href ? `<a class="btn sm" href="${escapar(href)}">${escapar(rotulo)}</a>` : '';
+  const foto = FOTOS_SERVICO[icone];
+  const topo = foto
+    ? `<img class="foto" src="${foto}" alt="${escapar(titulo)}" loading="lazy">`
+    : `<div class="ico"><svg viewBox="0 0 24 24">${ICONES[icone] || ICONES.wash}</svg></div>`;
   return `<article class="card">
-    <div class="ico"><svg viewBox="0 0 24 24">${ICONES[icone] || ICONES.wash}</svg></div>
+    ${topo}
     <h3>${escapar(titulo)}</h3><p>${escapar(descricao)}</p>${botao}</article>`;
 }
 

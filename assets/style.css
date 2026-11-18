@@ -46,6 +46,7 @@ h1{font-size:clamp(30px,4.2vw,44px);line-height:1.2;margin-bottom:18px}
 .g4{grid-template-columns:repeat(4,1fr)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);padding:28px 24px;display:flex;flex-direction:column;gap:12px;transition:transform .2s,box-shadow .2s}
 .card:hover{transform:translateY(-3px)}
+.card .foto{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:14px;display:block}
 .card h3{font-size:19px}
 .card p{margin:0;font-size:16px;flex:1}
 .ico{width:46px;height:46px;border-radius:12px;background:var(--mint);display:grid;place-items:center;color:var(--brand)}

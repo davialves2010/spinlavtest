@@ -15,7 +15,7 @@ const ARQUIVOS = [
   '/assets/views/admin/servicos.js', '/assets/views/admin/frete.js', '/assets/views/admin/bloqueios.js',
   '/assets/views/admin/equipe.js', '/assets/views/admin/registro.js',
   '/assets/pwa.js', '/assets/settings.js',
-  '/assets/img/logo.jpg', '/assets/img/toalhas.svg', '/assets/img/sobre.jpg',
+  '/assets/img/logo.jpg', '/assets/img/toalhas.svg', '/img/sobre.jpg', '/img/lavagem.jpg', '/img/secagem.jpg', '/img/secadoria.jpg', '/img/delicadas.jpg',
   '/assets/icons/icon-192.png', '/assets/icons/icon-512.png',
   '/manifest.webmanifest'
 ];
