@@ -33,8 +33,20 @@ const I = {
   target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>'
 };
 const ICONES_SERVICO = { wash: 'Máquina de lavar', dry: 'Secagem', iron: 'Passadoria', shirt: 'Camisa' };
-const card = (ic, t, d, href, label = 'Saiba mais') =>
-  `<article class="card"><div class="ico"><svg viewBox="0 0 24 24">${I[ic] || I.wash}</svg></div><h3>${e(t)}</h3><p>${e(d)}</p>${href ? `<a class="btn sm" href="${e(href)}">${e(label)}</a>` : ''}</article>`;
+const IMG_SERV = {
+  wash: 'assets/img/servicos/wash.jpg',
+  dry: 'assets/img/servicos/dry.jpg',
+  iron: 'assets/img/servicos/iron.jpg',
+  shirt: 'assets/img/servicos/shirt.jpg'
+};
+const card = (ic, t, d, href, label = 'Saiba mais') => {
+  const foto = IMG_SERV[ic];
+  const topo = foto
+    ? `<img class="thumb" src="${foto}" alt="${e(t)}" loading="lazy" width="800" height="600">`
+    : `<div class="ico"><svg viewBox="0 0 24 24">${I[ic] || I.wash}</svg></div>`;
+  const btn = href ? `<a class="btn sm" href="${e(href)}">${e(label)}</a>` : '';
+  return `<article class="card${foto ? ' foto' : ''}">${topo}<div class="corpo"><h3>${e(t)}</h3><p>${e(d)}</p>${btn}</div></article>`;
+};
 const stepper = n => `<ol class="steps">${['Cadastro', 'Pedido', 'Agendamento', 'Confirmação'].map((t, i) => `<li class="${i + 1 < n ? 'done' : i + 1 === n ? 'on' : ''}"><b>${i + 1 < n ? '✓' : i + 1}</b>${t}</li>`).join('')}</ol>`;
 
 /* ============ estado (carregado uma vez, sem recarregar a página) ============ */
